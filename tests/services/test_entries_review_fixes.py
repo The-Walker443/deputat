@@ -102,6 +102,7 @@ def test_implausible_dates_are_validation_errors(db, data):
 # ------------------------------------------------------------------ derived flags after calendar changes
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_derived_flags_follow_later_calendar_changes(db):
     from pathlib import Path
 

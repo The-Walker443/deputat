@@ -12,6 +12,10 @@ alters the day types/absences of a closed month needs ``reason`` (body field, ``
 without it the answer is 423 and nothing changes. With a reason the month is marked "nachträglich
 korrigiert" and the change is listed in its history. A period containing a closed month cannot be
 deleted (409).
+
+Official ferien (bundled catalogue, Bavaria): ``GET /calendar/ferien-katalog`` shows source, coverage and blocks
+(``?period=`` clips them to a period); ``POST /calendar/periods/{id}/ferien-katalog`` takes them over (409 when
+the period already has other ferien and ``replace`` is false; 422 when the catalogue does not cover it).
 """
 
 from __future__ import annotations
@@ -29,7 +33,8 @@ from app.core.types import LeaveMode
 from app.db.models import CalendarDay, DayOverride, Ferien, Holiday, Period
 from app.db.session import get_db
 from app.services import calendar_service as cal
-from app.services.settings_service import SettingsValidationError
+from app.services import ferien_catalog as ferien_catalog_svc
+from app.services.settings_service import SettingsValidationError, get_settings
 from app.util import fmt_hm, today_local
 
 router = APIRouter(tags=["calendar"])
@@ -152,6 +157,56 @@ class IcsCommitOut(BaseModel):
     replaced: list[str]
     skipped: list[dict[str, Any]]
     warnings: list[str]
+
+
+class CatalogBlockOut(BaseModel):
+    school_year: str
+    name: str
+    kind: str
+    start: date
+    end: date
+    official: str
+    clipped: bool
+    full_start: date
+    full_end: date
+
+
+class CatalogCoverageOut(BaseModel):
+    first: str | None
+    last: str | None
+    school_years: list[str]
+    partial: list[str]
+
+
+class CatalogOut(BaseModel):
+    available: bool
+    bundesland: str
+    source_url: str | None = None
+    source_title: str | None = None
+    source_short: str | None = None
+    retrieved: date | None = None
+    note: str | None = None
+    coverage: CatalogCoverageOut
+    period_id: str | None = None
+    covered: bool | None = None
+    hinweis: str | None = None
+    blocks: list[CatalogBlockOut]
+
+
+class CatalogApplyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    replace: bool = Field(False, description="Vorhandene Ferien der Periode durch die amtlichen Termine ersetzen")
+    reason: str | None = Field(None, description=REASON_DESC)
+
+
+class CatalogApplyOut(BaseModel):
+    period_id: str
+    unchanged: bool
+    created: list[FerienOut]
+    updated: list[FerienOut]
+    replaced: list[str]
+    korrigierte_monate: list[str]
+    message: str
 
 
 class HolidayOut(_Out):
@@ -422,6 +477,56 @@ def ics_commit(period_ref: str, body: IcsCommitIn, db: DB) -> IcsCommitOut:
         replaced=result.replaced,
         skipped=[{"index": i, "grund": reason} for i, reason in result.skipped],
         warnings=result.warnings,
+    )
+
+
+@router.get("/calendar/ferien-katalog", response_model=CatalogOut)
+def ferien_catalog(db: DB, period: str | None = None) -> CatalogOut:
+    """Official ferien of the bundled catalogue: source, covered school years and blocks.
+
+    With ``period`` (id, label or ``current``) only the blocks of that period, clipped to it, plus ``covered``.
+    """
+    settings = get_settings(db)
+    bundesland = (settings.bundesland or "").upper()
+    catalog = ferien_catalog_svc.get_catalog(bundesland)
+    coverage = catalog.coverage() if catalog else ferien_catalog_svc.Coverage(None, None, (), ())
+    out = CatalogOut(
+        available=catalog is not None,
+        bundesland=bundesland,
+        coverage=CatalogCoverageOut(first=coverage.first, last=coverage.last,
+                                    school_years=list(coverage.school_years), partial=list(coverage.partial)),
+        blocks=[],
+    )
+    if catalog is not None:
+        out.source_url, out.source_title, out.source_short = (
+            catalog.source_url, catalog.source_title, catalog.source_short)
+        out.retrieved, out.note = catalog.retrieved, catalog.note
+    if period is not None:
+        p = get_period_or_404(db, period)
+        status_ = cal.ferien_catalog_status(db, p)
+        out.period_id, out.covered, out.hinweis = p.id, status_.covered, status_.hint
+        out.blocks = [CatalogBlockOut(**b.as_dict()) for b in status_.blocks]
+    elif catalog is not None:
+        out.blocks = [CatalogBlockOut(**b.as_dict()) for b in catalog.blocks]
+    else:
+        out.hinweis = cal.CATALOG_BUNDESLAND_HINT if bundesland != "BY" else cal.CATALOG_UNAVAILABLE_HINT
+    return out
+
+
+@router.post("/calendar/periods/{period_ref}/ferien-katalog", response_model=CatalogApplyOut)
+def apply_ferien_catalog(period_ref: str, body: CatalogApplyIn, db: DB) -> CatalogApplyOut:
+    """Take over the official ferien for the period (idempotent; ``replace`` for periods with other ferien)."""
+    period = get_period_or_404(db, period_ref)
+    with service_errors():
+        result = cal.apply_ferien_catalog(db, period, replace=body.replace, reason=body.reason)
+    return CatalogApplyOut(
+        period_id=period.id,
+        unchanged=result.unchanged,
+        created=[ferien_out(f) for f in result.created],
+        updated=[ferien_out(f) for f in result.updated],
+        replaced=result.replaced,
+        korrigierte_monate=result.changed_months,
+        message=result.message,
     )
 
 

@@ -35,7 +35,7 @@ Stundenplan, Monate & Berichte, Import, Export & Backup, Schreiben und Einstellu
 | **Heute** | Großer Start/Stopp-Knopf, Kategorie-Chips (Wechsel mit einem Tipp), *Pause* / *Weiter*, optional Klasse, Fach, Ort. Kacheln: Ist heute, Soll heute, Saldo gesamt, Woche Ist/Soll, nächste Ferien mit Abbau-Kapazität. Stundenplan-Vorschläge mit „Tag wie geplant“. Funktioniert **offline**: Timer-Aktionen werden auf dem Gerät gespeichert und später in der richtigen Reihenfolge übertragen – maßgeblich ist immer die Uhrzeit des Tipps, nicht die der Übertragung. |
 | **Einträge** | Alle Einträge mit Filter; *Neu* bzw. *Nachtragen* mit Von–Bis oder „Nur Dauer“. Jede Änderung erzeugt eine **Revision** (Verlauf je Eintrag einsehbar), Löschen ist nur ein Ausblenden und lässt sich wiederherstellen. |
 | **Stundenplan** | Wochenraster mit Zeitraster der Schule, Versionen mit Gültigkeit (Halbjahreswechsel). Für jeden Schultag entstehen Vorschläge, die erst nach Bestätigung zählen; einzelne Stunden lassen sich unter *Offene Tage* (`/tage`) bzw. pro Tag (`/tag/<datum>`, auch aus der Woche und den Hinweisen erreichbar) auf *entfallen*, *Vertretung gehalten*, *Exkursion* oder *Zeit angepasst* setzen. |
-| **Kalender** | Einrichtungs-Assistent (Schuljahr → Ferien → Feiertage → Urlaub). Ferien per ICS-Datei oder von Hand, bayerische Feiertage werden berechnet (regional: Mariä Himmelfahrt, Augsburger Friedensfest). Je Tag oder Zeitraum: krank, Fortbildung, Dienstbefreiung, Sonderurlaub, Elternzeit, unterrichtsfreier Tag. **Urlaubszuordnung** der 30 Urlaubstage: Sommerferien zuerst, proportional oder manuell. |
+| **Kalender** | Einrichtungs-Assistent (Schuljahr → Ferien → Feiertage → Urlaub). Die **amtlichen bayerischen Ferientermine** (Schuljahre 2024/25 bis 2029/30) bringt die App mit und übernimmt sie beim Anlegen des Schuljahres automatisch (Kennzeichen „amtlich“, bearbeitbar); andere Termine per ICS-Datei oder von Hand. Bayerische Feiertage werden berechnet (regional: Mariä Himmelfahrt, Augsburger Friedensfest). Je Tag oder Zeitraum: krank, Fortbildung, Dienstbefreiung, Sonderurlaub, Elternzeit, unterrichtsfreier Tag. **Urlaubszuordnung** der 30 Urlaubstage: Sommerferien zuerst, proportional oder manuell. |
 | **Konto** | Saldo-Verlauf über das Schuljahr (Ferien und Urlaub schattiert) mit Prognose-Linie. Kacheln: Saldo heute (in Stunden und Arbeitstagen), Prognose Periodenende, J_soll, Ist bisher, Ferienarbeit, Woche Ist / W_max, EU-12-Monats-Mittel mit Ampel, Schulwochen > 48 h. **Ferien-Guthaben-Rechner**, Vergleich der Urlaubsmodi, Umschalter Klassenfahrt-Variante A/B. |
 | **Woche / Jahr** | Woche: Einträge als Blöcke, Ist/Soll je Tag, Wochen-Ist gegen Soll und W_max. Jahr: Heatmap aller Tage, Kategorienverteilung mit Unterrichtsanteil, Verteilung der Schulwochen (Marken bei 40 und 48 h), Monatsliste. |
 | **Monate & Berichte** | **Monatsabschluss** mit Prüfung offener Punkte, Prüf-Hash und Sperre; Mehrarbeit (Art. 87 BayBG) je Monat mit Status. Monats- und Jahresbericht als HTML zum Drucken bzw. „Als PDF speichern“, mit vollständiger Eintragsliste und Änderungsprotokoll. |
@@ -78,8 +78,9 @@ Dienstherrn („das gleicht sich übers Jahr aus“) macht Deputat nachprüfbar.
 
 ### Ein durchgerechnetes Beispiel
 
-Vollzeit, Tages-Soll 8:00. Die Ferien stammen aus der Beispieldatei `examples/ferien_bayern_BEISPIEL.ics`
-(nicht amtlich!), Schuljahr 01.08.2026–31.07.2027, Urlaub „Sommerferien zuerst“.
+Vollzeit, Tages-Soll 8:00. Schuljahr 01.08.2026–31.07.2027 mit den amtlichen Ferien (die Beispieldatei
+`examples/ferien_bayern_BEISPIEL.ics` hat für dieses Schuljahr dieselben Ferientermine), Urlaub „Sommerferien
+zuerst“.
 
 **Einzelne Wochen:**
 
@@ -91,7 +92,7 @@ Vollzeit, Tages-Soll 8:00. Die Ferien stammen aus der Beispieldatei `examples/fe
 | Herbstferien, 5 Werktage, kein Urlaub | 40:00 | 6:00 (Korrekturen) | **−34:00** |
 | Sommerferien-Woche mit 5 Urlaubstagen | 0:00 | 4:00 (Vorbereitung) | **+4:00** |
 
-**Das ganze Schuljahr** (so rechnet Deputat mit den Beispiel-Ferien):
+**Das ganze Schuljahr** (so rechnet Deputat mit diesen Ferien):
 
 - 260 Werktage − 8 Feiertage an Werktagen − 30 Urlaubstage = 222 Tage mit Soll → **J_soll = 222 × 8 h = 1.776 h**.
 - Davon sind 185 Schultage (= 37 Schulwochen) und 37 Ferien-/unterrichtsfreie Tage ohne Urlaub
@@ -311,10 +312,24 @@ Sicherheitskopie an). Ein JSON-Backup passt nur zur selben Datenbank-Version der
 Datenbank-Backups (`/data/backups/JJJJ-MM-TT.sqlite.gz`) werden auf dem Server eingespielt – Anleitung in
 [DEPLOY.md](DEPLOY.md#daten-backup-wiederherstellung); dabei laufen nötige Migrationen automatisch.
 
-**Stimmen die Ferientermine aus der Beispieldatei?**
-Nein. `examples/ferien_bayern_BEISPIEL.ics` enthält ausdrücklich Beispieldaten. Für das echte Schuljahr die
-offiziellen Termine des Kultusministeriums importieren oder von Hand eintragen und den regionalen Feiertag
-Mariä Himmelfahrt für den Schulort prüfen.
+**Wo kommen die Ferien her?**
+Aus dem mitgelieferten Ferienkatalog `config/ferien_bayern.yaml`: die amtlichen Termine der Ferienordnung des
+Bayerischen Kultusministeriums (BayMBl. 2022 Nr. 747, Schuljahre 2024/25 bis 2029/30, Stand 30.10.2026; abgeglichen
+mit dem Ferienkalender-Feed des Ministeriums). Legst du ein Schuljahr an, das der Katalog abdeckt, übernimmt die App
+die Ferien automatisch – ein Import ist nicht nötig. In der Ferienliste tragen sie das Kennzeichen „amtlich“ und den
+Quellenlink; du kannst sie bearbeiten (danach entfällt das Kennzeichen). Sommerferien, die vor dem 01.08. beginnen,
+werden an der Schuljahresgrenze geteilt: Die Tage bis 31.07. gehören zum alten Schuljahr. Buß- und Bettag steht nicht
+im Katalog – die App berechnet ihn selbst als unterrichtsfreien Tag mit vollem Soll (Lehrkräfte haben Dienst).
+Für Schuljahre ohne amtliche Termine (z. B. 2030/31: bisher sind nur die Sommerferien festgelegt) zeigt die App einen
+Hinweis; dann die Ferien per ICS importieren oder von Hand erfassen. Berufsschulen dürfen um bis zu zwei Tage
+abweichen – eigene Termine einfach bearbeiten oder per ICS („Andere Termine importieren“) übernehmen. Ein
+aktualisierter Katalog kann im Datenvolume liegen (`FERIEN_CATALOG_FILE`, siehe [DEPLOY.md](DEPLOY.md)).
+
+**Ich habe die Beispiel-Ferien importiert – was nun?**
+`examples/ferien_bayern_BEISPIEL.ics` enthält ausdrücklich Beispieldaten. Erkennt die App Ferien mit „BEISPIEL“ im
+Namen, bietet sie im Kalender „Amtliche Ferien übernehmen“ an und ersetzt sie nach Rückfrage durch die amtlichen
+Termine (betrifft das einen abgeschlossenen Monat, nur mit Begründung). Den regionalen Feiertag Mariä Himmelfahrt
+für den Schulort trotzdem prüfen.
 
 ---
 
@@ -374,7 +389,7 @@ app/
   static/      CSS, JS (Timer, Offline-Queue, Charts), vendor/, Service Worker, Manifest
   templates_docs/  Schreiben-Vorlagen (Markdown)
 alembic/       Migrationen
-config/        benchmarks.yaml (Studienwerte)
+config/        benchmarks.yaml (Studienwerte), ferien_bayern.yaml (amtliche Ferientermine Bayern)
 examples/      Beispiel-Ferien-ICS (nicht amtlich)
 tests/         core/, services/, api/, web/, e2e/
 docs/          ARCHITECTURE.md, RECHENREGELN.md

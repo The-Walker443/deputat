@@ -45,9 +45,28 @@
     </details>
   </div>
 
-  {% if not ferien %}
+  {% set here = "/kalender?periode=" ~ period.id %}
+  {% if catalog and catalog.offer == "apply" %}
+  <div class="banner banner-warn" data-ferien-katalog>{{ icon("alert", 18) }}
+    <div class="banner-body stack-sm">
+      <p><strong>Noch keine Ferien erfasst.</strong> Ohne Ferien stimmt das Konto nicht. Die amtlichen Ferientermine
+        für {{ period.label }} sind in der App hinterlegt ({{ cm.catalog_source(catalog) }}).</p>
+      {{ cm.catalog_form(request, period, here, closed_months=catalog_closed_months) }}
+    </div>
+  </div>
+  {% elif catalog and catalog.offer == "replace" %}
+  <div class="banner banner-warn" data-ferien-katalog>{{ icon("alert", 18) }}
+    <div class="banner-body stack-sm">
+      <p><strong>Die Ferien stammen aus der Beispieldatei („BEISPIEL“).</strong> Für {{ period.label }} sind die
+        amtlichen Ferientermine in der App hinterlegt ({{ cm.catalog_source(catalog) }}). Beim Übernehmen werden die
+        bisher erfassten Ferien dieses Schuljahres ersetzt.</p>
+      {{ cm.catalog_form(request, period, here, replace=True, closed_months=catalog_closed_months) }}
+    </div>
+  </div>
+  {% elif not ferien %}
   <div class="banner banner-warn">{{ icon("alert", 18) }}
     <span class="banner-body"><strong>Noch keine Ferien erfasst.</strong> Ohne Ferien stimmt das Konto nicht.
+      {% if catalog and catalog.hint %}{{ catalog.hint }}{% endif %}
       <a href="/kalender/einrichtung?periode={{ period.id }}&amp;schritt=2">Ferien importieren oder eintragen</a></span>
   </div>
   {% endif %}

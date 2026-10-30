@@ -33,7 +33,7 @@ STARTUP_TIMEOUT_S = 60
 APP_ENV_VARS = (
     "DATA_DIR", "DATABASE_URL", "APP_SECRET", "ALLOWED_HOSTS", "BACKUP_CRON", "BACKUP_RETENTION_DAYS",
     "BASE_URL", "LOG_LEVEL", "PROXY_TRUSTED_NETS", "CSRF_ENFORCE", "SESSION_MAX_AGE", "DEPUTAT_SCHEDULER",
-    "PYTEST_CURRENT_TEST",
+    "COOKIE_SECURE", "FERIEN_CATALOG_FILE", "PYTEST_CURRENT_TEST",
 )
 
 
@@ -167,18 +167,23 @@ def _check(res: httpx.Response, *ok: int) -> dict[str, Any]:
 
 
 def seed_calendar(server: LiveServer, today: date) -> dict[str, Any]:
-    """School-year period containing today (+ the previous one if the previous month lies before it) and
-    the example ferien (ICS import through the calendar API)."""
+    """School-year period containing today (+ the previous one if the previous month lies before it) with its
+    ferien: the app takes the official dates over from its catalogue when the period is created. Only for a
+    school year the catalogue does not cover, the example ferien are imported (ICS through the calendar API)."""
     api = server.api
     period = _check(api.post("/api/calendar/periods", json={}), 201)
     prev_first, _ = previous_month(today)
     if prev_first < date.fromisoformat(period["start"]):
         start_year = date.fromisoformat(period["start"]).year - 1
         _check(api.post("/api/calendar/periods", json={"label": f"{start_year}/{(start_year + 1) % 100:02d}"}), 201)
-    ics = ICS_EXAMPLE.read_text(encoding="utf-8")
-    preview = _check(api.post(f"/api/calendar/periods/{period['id']}/ics/preview", json={"content": ics}), 200)
-    committed = _check(api.post(f"/api/calendar/periods/{period['id']}/ics/commit", json={"content": ics}), 200)
-    return {"period": period, "preview": preview, "ics": committed}
+    ferien = _check(api.get(f"/api/calendar/periods/{period['id']}/ferien"), 200)
+    info: dict[str, Any] = {"period": period, "ferien": ferien, "source": "katalog"}
+    if not ferien:
+        ics = ICS_EXAMPLE.read_text(encoding="utf-8")
+        _check(api.post(f"/api/calendar/periods/{period['id']}/ics/preview", json={"content": ics}), 200)
+        committed = _check(api.post(f"/api/calendar/periods/{period['id']}/ics/commit", json={"content": ics}), 200)
+        info.update(ferien=committed["created"], source="ics")
+    return info
 
 
 def seed_previous_month(server: LiveServer, today: date, code: str = "VN", days: int = 3) -> tuple[str, list[dict]]:

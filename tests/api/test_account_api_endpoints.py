@@ -51,6 +51,7 @@ def test_account_without_period_returns_hint(client):
         assert res.json()["detail"] == "Bitte zuerst ein Schuljahr anlegen."
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_summary(client, worked):
     res = client.get("/api/account/summary", params=Q)
     assert res.status_code == 200, res.text
@@ -100,6 +101,7 @@ def test_series(client, worked):
     assert any(f["name"] == "Buß- und Bettag" for f in body["feiertage"])
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_holiday_forecast_with_planned_work(client, worked):
     body = client.get("/api/account/holiday-forecast", params=Q).json()
     herbst = body["items"][0]

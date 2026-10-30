@@ -8,7 +8,8 @@ tests/e2e), so a plain ``uv run pytest`` never needs a browser. If Chromium is n
 
 Fixtures:
 - ``live_server``: fresh uvicorn subprocess per test (temp DATA_DIR, unique ``*.localhost`` host).
-- ``seeded``: school-year period + example ferien (ICS via the calendar API) on ``live_server``.
+- ``seeded``: school-year period with its ferien on ``live_server`` (official dates from the app's catalogue;
+  example ICS via the calendar API only for a school year the catalogue does not cover).
 - ``open_context``: factory for browser contexts (viewport preset, de-DE, Europe/Berlin) whose pages
   collect console errors, page errors and CSP violations into ``problems``.
 """
@@ -98,7 +99,7 @@ def live_server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Live
 @pytest.fixture
 def seeded(live_server: LiveServer) -> dict[str, Any]:
     info = seed_calendar(live_server, today_berlin())
-    assert info["ics"]["created"], f"ICS-Import hat keine Ferien angelegt: {info['ics']}"
+    assert info["ferien"], f"Schuljahr ohne Ferien angelegt ({info['source']}): {info['period']}"
     return info
 
 

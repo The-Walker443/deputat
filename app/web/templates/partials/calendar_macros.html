@@ -146,3 +146,33 @@
   </div>
 </form>
 {% endmacro %}
+
+{# Source line of the official ferien catalogue ("Quelle: Bayerisches Kultusministerium, Stand 30.10.2026"). #}
+{% macro catalog_source(catalog) -%}
+Quelle: <a href="{{ catalog.source_url }}" target="_blank" rel="noopener noreferrer" title="{{ catalog.source_title }}">{{ catalog.source_short }}</a>, Stand {{ catalog.retrieved_de }}
+{%- endmacro %}
+
+{# "Amtliche Ferien übernehmen": apply (period without ferien) or replace (with confirmation). closed_months: the
+   closed months the takeover would change (calendar_service.ferien_catalog_closed_months) – then a reason is
+   required, for apply as well as for replace. #}
+{% macro catalog_form(request, period, next_url, replace=False, closed_months=(), label="Amtliche Ferien übernehmen", btn="btn-primary") %}
+<form method="post" action="/kalender/ferien/katalog" class="stack-sm"
+      {%- if replace %} data-confirm="Alle bisher erfassten Ferien von „{{ period.label }}“ durch die amtlichen Termine ersetzen?"{% endif %}>
+  {{ csrf(request) }}
+  <input type="hidden" name="periode" value="{{ period.id }}">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  {% if replace %}
+  <input type="hidden" name="ersetzen" value="1">
+  {% endif %}
+  {% if closed_months %}
+  <div class="field">
+    <label for="kat-grund-{{ period.id }}">Begründung <span class="text-muted text-xs">(nötig: betrifft den abgeschlossenen Monat {{ closed_months|join(", ") }})</span></label>
+    <input id="kat-grund-{{ period.id }}" name="grund" maxlength="500" required
+           placeholder="{{ 'z. B. Beispieldaten durch amtliche Termine ersetzt' if replace else 'z. B. amtliche Ferien nachgetragen' }}">
+  </div>
+  {% endif %}
+  <div class="form-actions">
+    <button type="submit" class="btn {{ btn }}">{{ icon("check", 18) }} {{ label }}</button>
+  </div>
+</form>
+{% endmacro %}

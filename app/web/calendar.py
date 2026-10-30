@@ -11,6 +11,7 @@ and Post/Redirect/Get + flash messages):
 - ``POST /kalender/perioden/{id}/loeschen``  delete period (ferien + materialised days; entries stay)
 - ``GET  /kalender/ferien``                  ferien list with CRUD + ICS upload
 - ``POST /kalender/ferien``                  create ferien
+- ``POST /kalender/ferien/katalog``          take over the official ferien (catalogue; ``ersetzen=1`` replaces)
 - ``POST /kalender/ferien/{id}``             update ferien
 - ``POST /kalender/ferien/{id}/loeschen``    delete ferien
 - ``POST /kalender/ics/vorschau``            upload ICS -> preview page (nothing written)
@@ -341,6 +342,8 @@ def _leave_compare(db: Session, period: Period) -> list[dict[str, Any]] | None:
 def _base_ctx(db: Session, period: Period | None) -> dict[str, Any]:
     settings = settings_svc.get_settings(db)
     periods = cal.list_periods(db)
+    # Official ferien of the bundled catalogue for this period (banners, wizard step 2, ferien list).
+    catalog = cal.ferien_catalog_status(db, period) if period is not None else None
     return {
         "periods": periods,
         "period": period,
@@ -353,7 +356,16 @@ def _base_ctx(db: Session, period: Period | None) -> dict[str, Any]:
         "ferien_kind_choices": FERIEN_KIND_CHOICES,
         "ferien_kind_labels": {k: v for k, v in FERIEN_KIND_CHOICES},
         "example_ics_hint": EXAMPLE_ICS_HINT,
+        "catalog": catalog,
+        "catalog_closed_months": _catalog_closed_months(db, period, catalog),
     }
+
+
+def _catalog_closed_months(db: Session, period: Period | None, catalog: cal.CatalogStatus | None) -> list[str]:
+    """Closed months the catalogue form (apply or replace) would change: the form then asks for a reason."""
+    if period is None or catalog is None or not (catalog.offer == "apply" or catalog.can_replace):
+        return []
+    return cal.ferien_catalog_closed_months(db, period)
 
 
 # --------------------------------------------------------------------------- main page
@@ -457,6 +469,12 @@ async def create_period(request: Request, db: Session = Depends(get_db)) -> Redi
         return _redirect("/kalender/einrichtung" if wizard else "/kalender")
     flash(request, f"„{period.label}“ angelegt ({cal.fmt_date_de(period.start)}–{cal.fmt_date_de(period.end)}).",
           "success")
+    catalog = cal.ferien_catalog_status(db, period)
+    if catalog.katalog_count:
+        flash(request, f"{catalog.katalog_count} amtliche Ferienabschnitte übernommen ({catalog.source_short}, "
+                       f"Stand {catalog.retrieved_de}).", "success")
+    elif catalog.hint:
+        flash(request, catalog.hint, "warn")
     if wizard:
         return _redirect(f"/kalender/einrichtung?periode={period.id}&schritt=2")
     return _redirect(f"/kalender?periode={period.id}")
@@ -497,6 +515,34 @@ def ferien_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
 
 def _ferien_next(form: Any, period: Period) -> str:
     return _safe_next(form.get("next"), f"/kalender/ferien?periode={period.id}")
+
+
+# Registered before ``/kalender/ferien/{ferien_id}`` so that "katalog" is not taken for a ferien id.
+@router.post("/kalender/ferien/katalog", include_in_schema=False)
+async def apply_ferien_catalog(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Take over the official ferien (``ersetzen=1``: replace the period's ferien, confirmed in the browser)."""
+    form = await request.form()
+    period = _period_or_none(db, str(form.get("periode") or "") or None)
+    if period is None:
+        flash(request, cal.NO_PERIOD_HINT, "danger")
+        return _redirect("/kalender")
+    target = _ferien_next(form, period)
+    try:
+        result = cal.apply_ferien_catalog(
+            db, period, replace=form.get("ersetzen") == "1", reason=str(form.get("grund") or "").strip() or None,
+        )
+    except cal.CalendarLocked as exc:
+        flash(request, f"{exc} Bitte im Feld „Begründung“ angeben, warum die amtlichen Ferien übernommen werden.",
+              "danger")
+        return _redirect(target)
+    except cal.CalendarError as exc:
+        db.rollback()
+        flash(request, str(exc), "danger")
+        return _redirect(target)
+    flash(request, result.message, "success")
+    if result.changed_months:
+        flash(request, f"Nachträglich korrigiert: {', '.join(result.changed_months)}.", "warn")
+    return _redirect(target)
 
 
 @router.post("/kalender/ferien", include_in_schema=False)

@@ -84,7 +84,7 @@ Entspricht Konzept §4 mit diesen technischen Ergänzungen:
   `zeitraster` (JSON: Liste {slot_no,start,end,label}), `api_token_hash` (null; `password_hash` entfernt in Migration 0003),
   `ui_default_location_rule` (JSON), `ferienarbeit_schaetzung` (JSON {ferien_id: hours}).
 - `period`: id, label, start, end, kind ('schuljahr'|'kalenderjahr').
-- `ferien`: id, period_id, name, kind (FerienKind), start, end, source, quelle_url.
+- `ferien`: id, period_id, name, kind (FerienKind), start, end, source ('manuell'|'ics'|'katalog'), quelle_url.
 - `holiday`: date PK, name, scope ('gesetzlich'|'regional'|'unterrichtsfrei'), source.
 - `day_override`: date PK, absence_type|null, day_type|null (z. B. 'unterrichtsfrei' für päd. Tag),
   urlaub_manuell bool, note.  ← Nutzer-Eingaben; `calendar_day` wird daraus materialisiert.
@@ -155,8 +155,11 @@ richten sich danach.
 
 - `services/ledger.py` – lädt Settings/Periode/calendar_day/time_entry und liefert `LedgerContext`
   (days, ledger rows, saldo, Kennzahlen). EINZIGE Stelle, an der DB-Daten in den Rechenkern fließen.
-- `services/calendar_service.py` – Perioden, Ferien (CRUD, ICS-Import), Feiertage, Overrides,
-  Urlaubszuordnung, `rematerialize(db, period)`.
+- `services/calendar_service.py` – Perioden, Ferien (CRUD, ICS-Import, amtliche Ferien aus dem Katalog:
+  `apply_ferien_catalog`, automatisch in `create_period`), Feiertage, Overrides, Urlaubszuordnung,
+  `rematerialize(db, period)`.
+- `services/ferien_catalog.py` – lädt/prüft `config/ferien_bayern.yaml` (oder `FERIEN_CATALOG_FILE`),
+  `blocks_for_period` (an der Periodengrenze zugeschnitten), `coverage()`. Nur Bundesland BY.
 - `services/entries.py` – create/update/delete mit Revisionen, Überlappungsprüfung, Mitternachts-Split,
   Lock-Regeln, nachtraeglich-Flag. ALLE Schreibzugriffe auf time_entry laufen hier durch.
 - `services/timer.py` – start/stop/switch/pause/resume (nutzt entries.py).

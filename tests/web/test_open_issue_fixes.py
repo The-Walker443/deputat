@@ -346,6 +346,7 @@ def test_manual_leave_unassigned_days_are_info_not_warning(client):
     assert "Noch zuzuordnen" in html and "konnten nicht zugeordnet" not in html
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_manual_leave_real_shortage_is_still_a_warning(db):
     from app.services import calendar_service as cal
     from app.services import settings_service as settings_svc

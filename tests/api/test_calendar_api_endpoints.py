@@ -66,6 +66,7 @@ def test_days_and_holidays(client, year):
     assert client.get(f"/api/calendar/periods/{pid}/days", params={"start": "2026-11-16", "end": "2026-11-22"}).json() == days
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_ics_preview_and_commit(client, period):
     pid = period["id"]
     res = client.post(f"/api/calendar/periods/{pid}/ics/preview", json={"content": EXAMPLE_ICS})
@@ -88,6 +89,7 @@ def test_ics_preview_and_commit(client, period):
     assert client.post(f"/api/calendar/periods/{pid}/ics/preview", json={}).status_code == 422
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_ferien_crud(client, period):
     pid = period["id"]
     res = client.post(
@@ -173,3 +175,61 @@ def test_leave_plan_and_adopt(client, year):
     adopted = client.post(f"/api/calendar/periods/{pid}/leave-plan/adopt", json={"mode": "proportional"}).json()
     assert adopted["mode"] == "manuell" and adopted["days"] == prop["days"]
     assert client.post(f"/api/calendar/periods/{pid}/leave-plan/adopt", json={"mode": "manuell"}).status_code == 422
+
+
+# =========================================================================== official ferien (catalogue)
+
+
+def test_ferien_catalog_overview(client):
+    res = client.get("/api/calendar/ferien-katalog")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["available"] is True and data["bundesland"] == "BY"
+    assert data["source_url"] == "https://www.verkuendung-bayern.de/baymbl/2022-747/"
+    assert data["retrieved"] == "2026-10-30" and data["source_short"] == "Bayerisches Kultusministerium"
+    assert data["coverage"] == {"first": "2024/25", "last": "2029/30",
+                                "school_years": ["2024/25", "2025/26", "2026/27", "2027/28", "2028/29", "2029/30"],
+                                "partial": ["2030/31"]}
+    assert len(data["blocks"]) == 37 and data["period_id"] is None
+
+
+def test_new_period_has_official_ferien_and_apply_is_idempotent(client, period):
+    ferien = client.get(f"/api/calendar/periods/{period['id']}/ferien").json()
+    assert len(ferien) == 6 and {f["source"] for f in ferien} == {"katalog"}
+
+    view = client.get("/api/calendar/ferien-katalog", params={"period": period["id"]}).json()
+    assert view["covered"] is True and view["hinweis"] is None and view["period_id"] == period["id"]
+    assert [(b["start"], b["end"]) for b in view["blocks"]] == [(f["start"], f["end"]) for f in ferien]
+
+    res = client.post(f"/api/calendar/periods/{period['id']}/ferien-katalog", json={})
+    assert res.status_code == 200, res.text
+    assert res.json()["unchanged"] is True and res.json()["created"] == []
+
+
+def test_apply_ferien_catalog_conflict_replace_and_reason(client):
+    pid = client.post("/api/calendar/periods", json={"label": "2027/28"}).json()["id"]
+    herbst = next(f for f in client.get(f"/api/calendar/periods/{pid}/ferien").json() if f["kind"] == "herbst")
+    assert client.patch(f"/api/calendar/ferien/{herbst['id']}", json={"end": "2027-11-04"}).status_code == 200
+
+    res = client.post(f"/api/calendar/periods/{pid}/ferien-katalog", json={})
+    assert res.status_code == 409 and "bitte bestätigen" in res.json()["detail"]
+    res = client.post(f"/api/calendar/periods/{pid}/ferien-katalog", json={"replace": True, "foo": 1})
+    assert res.status_code == 422
+
+    res = client.post(f"/api/calendar/periods/{pid}/ferien-katalog", json={"replace": True})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["replaced"] == ["Herbstferien 2027"] and len(body["created"]) == 1
+    assert body["created"][0]["end"] == "2027-11-05" and body["created"][0]["source"] == "katalog"
+    assert body["korrigierte_monate"] == []
+
+
+def test_apply_ferien_catalog_uncovered_year(client):
+    pid = client.post("/api/calendar/periods", json={"label": "2023/24"}).json()["id"]
+    assert client.get(f"/api/calendar/periods/{pid}/ferien").json() == []
+    view = client.get("/api/calendar/ferien-katalog", params={"period": pid}).json()
+    assert view["covered"] is False and view["blocks"] == []
+    assert view["hinweis"].startswith("Für dieses Schuljahr sind keine amtlichen Termine hinterlegt")
+    res = client.post(f"/api/calendar/periods/{pid}/ferien-katalog", json={})
+    assert res.status_code == 422 and "keine amtlichen Termine" in res.json()["detail"]
+    assert client.post("/api/calendar/periods/unbekannt/ferien-katalog", json={}).status_code == 404

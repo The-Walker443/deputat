@@ -44,6 +44,16 @@ Vorrang beim Tagestyp: Wochenende > Feiertag > manuell gesetzter Tagestyp > Feri
 Feiertage werden berechnet (Ostern nach Gauß), nicht hart kodiert. Buß- und Bettag (Mittwoch vor dem 23.11.)
 ist automatisch *unterrichtsfrei* (kein Feiertag, Soll bleibt).
 
+**Ferien** kommen aus dem mitgelieferten Katalog der amtlichen bayerischen Termine (`config/ferien_bayern.yaml`,
+BayMBl. 2022 Nr. 747; `app/services/ferien_catalog.py`). Beim Anlegen einer Periode übernimmt die App sie
+(`source='katalog'`), wenn der Katalog jedes berührte Schuljahr (01.08.–31.07.) vollständig enthält; sonst bleibt
+die Periode ohne Ferien und die App verweist auf ICS-Import oder Handeingabe. Erster und letzter Ferientag zählen
+mit. **Entscheidung:** Ein Ferienblock über die Periodengrenze wird an der Grenze geteilt – beginnen die
+Sommerferien vor dem 01.08. (z. B. 31.07.2028), gehören diese Tage als eigener Sommerferien-Abschnitt zur alten
+Periode (für die Urlaubszuordnung „spätere Sommerferien“, siehe §3). Buß- und Bettag steht nicht im Katalog: Er ist
+schon als unterrichtsfreier Tag mit vollem Soll berechnet (Lehrkräfte sind nicht vom Dienst befreit).
+Das Ersetzen vorhandener Ferien durch den Katalog ändert abgeschlossene Monate nur mit Begründung (wie in §5).
+
 **J_soll** = Summe aller Tages-Soll der Kontoperiode (Konzept-Test T7: 261 Werktage − 11 Feiertage − 30 Urlaubstage
 = 220 Tage × 8 h = 1.760 h).
 

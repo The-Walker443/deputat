@@ -9,6 +9,10 @@ objects (via :func:`app.core.calendar.build_days` and :func:`app.core.leave.plan
 :func:`rematerialize` stores the result in ``calendar_day`` (day type, absence, ferien, soll).
 Every mutating function here rematerialises the affected periods and commits.
 
+Ferien come from the bundled catalogue of official Bavarian dates (:mod:`app.services.ferien_catalog`,
+``source='katalog'``): :func:`create_period` takes them over automatically when the catalogue covers the period,
+:func:`apply_ferien_catalog` does it for existing periods. ICS import and manual entry remain as fallback.
+
 Ferien may cross a period boundary (Bavaria: the summer holidays can start before 31.07.). For a
 period all ferien rows intersecting its date range are used; rows of the period itself win over
 overlapping rows attached to a neighbouring period.
@@ -19,8 +23,9 @@ Errors: :class:`CalendarError` (``ValueError``, German message, invalid input),
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -52,14 +57,31 @@ from app.db.models import (
     PeriodKind,
     Settings,
 )
+from app.services import ferien_catalog
+from app.services.ferien_catalog import CatalogBlock, Coverage
 from app.services.settings_service import get_settings, soll_params
 from app.util import LOCAL_TZ, now_utc, today_local
+
+log = logging.getLogger("app.services.calendar_service")
 
 NO_PERIOD_HINT = "Bitte zuerst ein Schuljahr anlegen."
 
 SOURCE_BERECHNET = "berechnet"
 SOURCE_ICS = "ics"
 SOURCE_MANUELL = "manuell"
+SOURCE_KATALOG = "katalog"
+
+CATALOG_UNCOVERED_HINT = (
+    "Für dieses Schuljahr sind keine amtlichen Termine hinterlegt – bitte per ICS importieren oder manuell erfassen."
+)
+CATALOG_BUNDESLAND_HINT = (
+    "Amtliche Ferientermine sind nur für Bayern hinterlegt – bitte per ICS importieren oder manuell erfassen."
+)
+CATALOG_UNAVAILABLE_HINT = (
+    "Der Ferienkatalog konnte nicht geladen werden – bitte per ICS importieren oder manuell erfassen."
+)
+# Ferien imported from examples/ferien_bayern_BEISPIEL.ics carry this marker in their name.
+EXAMPLE_MARKER = "BEISPIEL"
 
 # Day types a user may set via override (weekend/holiday always come from the calendar).
 OVERRIDE_DAY_TYPES = frozenset({DayType.SCHULTAG, DayType.FERIENTAG, DayType.UNTERRICHTSFREI})
@@ -191,12 +213,16 @@ def create_period(
     end: date | None = None,
     kind: str | None = None,
     today: date | None = None,
+    apply_catalog: bool = True,
 ) -> Period:
     """Create a period and materialise its days.
 
     ``label`` like ``'2026/27'`` (school year from ``settings.periode_start_md``) or ``'2027'``
     (calendar year). Without a label the period containing ``today`` (per ``settings.kontoperiode``)
     is created. With explicit ``start``/``end`` a custom period is created (label optional).
+
+    With ``apply_catalog`` the official ferien of the bundled catalogue are taken over (``source='katalog'``)
+    when the catalogue covers the period (Bavaria only); otherwise the period starts without ferien.
     """
     settings = get_settings(db)
     if start is not None or end is not None:
@@ -230,6 +256,8 @@ def create_period(
     period = Period(label=label, start=start, end=end, kind=kind)
     db.add(period)
     db.flush()
+    if apply_catalog:
+        _auto_apply_catalog(db, period, settings)
     rematerialize(db, period)
     return period
 
@@ -309,11 +337,15 @@ LOCKED_CALENDAR_MESSAGE = (
 )
 
 
-def closed_month_signature(db: Session) -> dict[str, tuple]:
+def closed_month_signature(
+    db: Session, *, ferien: Callable[[list[Ferien]], list[Any]] | None = None
+) -> dict[str, tuple]:
     """Per closed month the calendar facts that drive its Soll: (date, day type, absence, ferien?, holiday?).
 
     Computed in memory from the current (flushed) source tables with the configured leave mode – a change of
-    overrides, ferien or the leave assignment that touches a closed month changes its signature.
+    overrides, ferien or the leave assignment that touches a closed month changes its signature. ``ferien`` maps
+    the loaded ferien rows of each period to the rows to compute with (dry run of a planned change, nothing is
+    written; see :func:`ferien_catalog_closed_months`).
     """
     closed = list(db.scalars(select(MonthClose.year_month)))
     if not closed:
@@ -324,7 +356,12 @@ def closed_month_signature(db: Session) -> dict[str, tuple]:
     for period in db.scalars(select(Period).order_by(Period.start)):
         if f"{period.end:%Y-%m}" < lo or f"{period.start:%Y-%m}" > hi:
             continue
-        for d in compute_days(db, period, settings=settings).days:
+        inputs = None
+        if ferien is not None:
+            raw = load_inputs(db, period.start, period.end)
+            inputs = CalendarInputs(raw.start, raw.end, ferien(raw.ferien), raw.holidays, raw.holiday_sources,
+                                    raw.overrides)
+        for d in compute_days(db, period, settings=settings, inputs=inputs).days:
             ym = f"{d.date:%Y-%m}"
             if ym in result:
                 result[ym].append((d.date, d.day_type.value, d.absence.value if d.absence else None,
@@ -683,7 +720,7 @@ def update_ferien(
     row = get_ferien(db, ferien_id)
     before = closed_month_signature(db)
     period = row.period
-    old_start, old_end, old_name = row.start, row.end, row.name
+    old_start, old_end, old_name, old_kind = row.start, row.end, row.name, row.kind
     new_name = old_name if name is _UNSET else (name or "").strip()
     new_start = old_start if start is _UNSET or start is None else start
     new_end = old_end if end is _UNSET or end is None else end
@@ -692,6 +729,10 @@ def update_ferien(
         row.kind = _kind(kind, new_name)
     elif new_name != old_name and row.kind == classify_ferien(old_name).value:
         row.kind = classify_ferien(new_name).value  # follow the name unless set explicitly
+    if row.source == SOURCE_KATALOG and (new_name, row.kind, new_start, new_end) != (
+        old_name, old_kind, old_start, old_end
+    ):
+        row.source = SOURCE_MANUELL  # no longer the official entry (badge "amtlich" disappears, cf. _row_in_sync)
     row.name, row.start, row.end = new_name, new_start, new_end
     if quelle_url is not _UNSET:
         row.quelle_url = quelle_url or None
@@ -945,6 +986,285 @@ def commit_ics(
     guard_closed_months(db, before, reason)
     rematerialize_all(db)
     return IcsCommitResult(created=created, replaced=replaced, skipped=skipped, warnings=preview.warnings)
+
+
+# =========================================================================== official ferien (catalogue)
+
+
+@dataclass(frozen=True)
+class CatalogStatus:
+    """What the bundled catalogue offers for a period (drives the banners in wizard, calendar and ferien list)."""
+
+    available: bool  # Bavaria and the catalogue file could be loaded
+    covered: bool  # every school year of the period is complete in the catalogue
+    blocks: list[CatalogBlock]  # clipped to the period ([] when not covered)
+    coverage: Coverage
+    source_url: str | None
+    source_title: str | None
+    source_short: str | None
+    retrieved: date | None
+    note: str | None
+    ferien_count: int
+    katalog_count: int
+    has_example: bool  # ferien from the example ICS ("BEISPIEL" in the name)
+    matches: bool  # the period's ferien have exactly the catalogue dates
+    in_sync: bool  # ... and all of them are catalogue rows (nothing to take over)
+    offer: str | None  # 'apply' (no ferien yet) | 'replace' (example data) | None
+    hint: str | None  # why nothing can be taken over (not covered / other Bundesland / file problem)
+
+    @property
+    def retrieved_de(self) -> str:
+        return fmt_date_de(self.retrieved) if self.retrieved else ""
+
+    @property
+    def can_replace(self) -> bool:
+        """Existing ferien differ from the catalogue: a (confirmed) replacement is possible."""
+        return self.covered and self.ferien_count > 0 and not self.in_sync
+
+
+@dataclass(frozen=True)
+class CatalogApplyResult:
+    created: list[Ferien]
+    updated: list[Ferien]  # existing rows with the official dates, now marked as catalogue rows
+    replaced: list[str]  # names of removed rows
+    unchanged: bool
+    changed_months: list[str] = field(default_factory=list)  # closed months marked "nachträglich korrigiert"
+
+    @property
+    def message(self) -> str:
+        if self.unchanged:
+            return "Die amtlichen Ferien sind bereits übernommen."
+        count = len(self.created) + len(self.updated)
+        text = f"{count} amtliche Ferienabschnitt(e) übernommen."
+        if self.replaced:
+            text += f" Ersetzt: {', '.join(self.replaced)}."
+        return text
+
+
+def is_example_ferien(row: Ferien) -> bool:
+    return EXAMPLE_MARKER in (row.name or "").upper()
+
+
+def _catalog_for(settings: Settings) -> tuple[ferien_catalog.Catalog | None, str | None]:
+    """The catalogue for the configured Bundesland, or ``(None, hint)``."""
+    if (settings.bundesland or "").upper() != ferien_catalog.SUPPORTED_BUNDESLAND:
+        return None, CATALOG_BUNDESLAND_HINT
+    catalog = ferien_catalog.get_catalog(settings.bundesland)
+    if catalog is None:
+        return None, CATALOG_UNAVAILABLE_HINT
+    return catalog, None
+
+
+def _row_in_sync(row: Ferien, block: CatalogBlock | None, catalog: ferien_catalog.Catalog) -> bool:
+    return (
+        block is not None
+        and row.source == SOURCE_KATALOG
+        and row.name == block.name
+        and row.kind == block.kind.value
+        and row.quelle_url == catalog.source_url
+    )
+
+
+def ferien_catalog_status(db: Session, period: Period) -> CatalogStatus:
+    settings = get_settings(db)
+    catalog, hint = _catalog_for(settings)
+    rows = list_ferien(db, period)
+    has_example = any(is_example_ferien(r) for r in rows)
+    katalog_count = sum(1 for r in rows if r.source == SOURCE_KATALOG)
+    if catalog is None:
+        return CatalogStatus(
+            available=False, covered=False, blocks=[], coverage=Coverage(None, None, (), ()), source_url=None,
+            source_title=None, source_short=None, retrieved=None, note=None, ferien_count=len(rows),
+            katalog_count=katalog_count, has_example=has_example, matches=False, in_sync=False, offer=None,
+            hint=hint,
+        )
+    covered = catalog.covers(period.start, period.end)
+    blocks = catalog.blocks_for_period(period.start, period.end) if covered else []
+    wanted = {(b.start, b.end): b for b in blocks}
+    matches = covered and sorted((r.start, r.end) for r in rows) == sorted(wanted)
+    in_sync = matches and all(_row_in_sync(r, wanted.get((r.start, r.end)), catalog) for r in rows)
+    offer = None
+    if covered and not rows:
+        offer = "apply"
+    elif covered and has_example and not in_sync:
+        offer = "replace"
+    return CatalogStatus(
+        available=True,
+        covered=covered,
+        blocks=blocks,
+        coverage=catalog.coverage(),
+        source_url=catalog.source_url,
+        source_title=catalog.source_title,
+        source_short=catalog.source_short,
+        retrieved=catalog.retrieved,
+        note=catalog.note,
+        ferien_count=len(rows),
+        katalog_count=katalog_count,
+        has_example=has_example,
+        matches=matches,
+        in_sync=in_sync,
+        offer=offer,
+        hint=None if covered else CATALOG_UNCOVERED_HINT,
+    )
+
+
+def _create_catalog_rows(
+    db: Session, period: Period, catalog: ferien_catalog.Catalog, blocks: Iterable[CatalogBlock]
+) -> list[Ferien]:
+    return [
+        create_ferien(
+            db, period, name=b.name, start=b.start, end=b.end, kind=b.kind.value, source=SOURCE_KATALOG,
+            quelle_url=catalog.source_url, rematerialize_after=False,
+        )
+        for b in blocks
+    ]
+
+
+def _auto_apply_catalog(db: Session, period: Period, settings: Settings) -> list[Ferien]:
+    """On period creation: take over the catalogue ferien if covered and the period has none (no commit)."""
+    catalog, _ = _catalog_for(settings)
+    if catalog is None or not catalog.covers(period.start, period.end) or list_ferien(db, period):
+        return []
+    try:
+        return _create_catalog_rows(db, period, catalog, catalog.blocks_for_period(period.start, period.end))
+    except CalendarError:  # never block the period because of the catalogue (the file is validated on load)
+        log.exception("Amtliche Ferien konnten nicht übernommen werden (%s)", period.label)
+        return []
+
+
+@dataclass(frozen=True)
+class _CatalogPlan:
+    """What :func:`apply_ferien_catalog` does with a period's ferien (shared with the dry run)."""
+
+    catalog: ferien_catalog.Catalog
+    wanted: dict[tuple[date, date], CatalogBlock]  # catalogue blocks of the period by (start, end)
+    rows: list[Ferien]  # the period's current ferien
+    kept: dict[tuple[date, date], Ferien]  # rows with official dates: kept and marked as catalogue rows
+    removed: list[Ferien]  # all other rows (only removed with ``replace``)
+
+    @property
+    def missing(self) -> list[CatalogBlock]:
+        return [b for k, b in self.wanted.items() if k not in self.kept]
+
+    @property
+    def unchanged(self) -> bool:
+        return (bool(self.rows) and not self.removed and not self.missing
+                and all(_row_in_sync(r, self.wanted[k], self.catalog) for k, r in self.kept.items()))
+
+
+def _plan_catalog(db: Session, period: Period) -> _CatalogPlan:
+    """Plan the takeover; :class:`CalendarError` when the catalogue is unavailable or does not cover the period."""
+    catalog, hint = _catalog_for(get_settings(db))
+    if catalog is None:
+        raise CalendarError(hint or CATALOG_UNAVAILABLE_HINT)
+    if not catalog.covers(period.start, period.end):
+        raise CalendarError(CATALOG_UNCOVERED_HINT)
+    wanted = {(b.start, b.end): b for b in catalog.blocks_for_period(period.start, period.end)}
+    rows = list_ferien(db, period)
+    kept: dict[tuple[date, date], Ferien] = {}
+    removed: list[Ferien] = []
+    for row in rows:
+        key = (row.start, row.end)
+        if key in wanted and key not in kept:
+            kept[key] = row
+        else:
+            removed.append(row)
+    return _CatalogPlan(catalog=catalog, wanted=wanted, rows=rows, kept=kept, removed=removed)
+
+
+@dataclass(frozen=True)
+class _FerienStub:
+    """In-memory ferien row for the dry run (the attributes :func:`ferien_for_period` reads)."""
+
+    id: str
+    period_id: str
+    name: str
+    kind: str
+    start: date
+    end: date
+
+
+def ferien_catalog_closed_months(db: Session, period: Period) -> list[str]:
+    """Dry run of ``apply_ferien_catalog(db, period, replace=True)``: the closed months it would change.
+
+    Nothing is written. The comparison is the guard's (:func:`closed_month_signature` before/after), so it also
+    finds months outside the period – a removed row may reach into the neighbouring period (e.g. ICS Sommerferien
+    31.07.–11.09.2028 attached to 2027/28). Non-empty means: the takeover needs a reason. ``[]`` when no month is
+    closed, the catalogue is unavailable/does not cover the period, or nothing would change.
+    """
+    if db.scalar(select(MonthClose.year_month).limit(1)) is None:
+        return []
+    try:
+        plan = _plan_catalog(db, period)
+    except CalendarError:
+        return []
+    if plan.unchanged:
+        return []
+    removed = {r.id for r in plan.removed}
+    kept = {r.id: plan.wanted[k] for k, r in plan.kept.items()}
+    new = [
+        _FerienStub(id=f"katalog-neu-{i}", period_id=period.id, name=b.name, kind=b.kind.value, start=b.start,
+                    end=b.end)
+        for i, b in enumerate(plan.missing)
+    ]
+
+    def planned(rows: list[Ferien]) -> list[Any]:
+        result: list[Any] = []
+        for r in rows:
+            if r.id in removed:
+                continue
+            b = kept.get(r.id)
+            result.append(r if b is None else _FerienStub(id=r.id, period_id=r.period_id, name=b.name,
+                                                          kind=b.kind.value, start=r.start, end=r.end))
+        return sorted(result + new, key=lambda r: r.start)
+
+    before = closed_month_signature(db)
+    after = closed_month_signature(db, ferien=planned)
+    return sorted(ym for ym, sig in before.items() if after.get(ym) != sig)
+
+
+def apply_ferien_catalog(
+    db: Session, period: Period, *, replace: bool = False, reason: str | None = None
+) -> CatalogApplyResult:
+    """Take over the official ferien of the catalogue for ``period`` (``source='katalog'``).
+
+    Idempotent: when the period already holds exactly the catalogue blocks, nothing changes. A period that has
+    other ferien is only changed with ``replace=True`` (else :class:`CalendarConflict`): rows with the official
+    dates are kept (ids and estimates survive) and marked as catalogue rows, all other rows of the period are
+    removed and the missing blocks created. A change of a closed month needs ``reason`` (else
+    :class:`CalendarLocked`, nothing changes). Not covered / other Bundesland: :class:`CalendarError`.
+    """
+    plan = _plan_catalog(db, period)
+    if plan.unchanged:
+        return CatalogApplyResult(created=[], updated=[], replaced=[], unchanged=True)
+    if plan.rows and not replace:
+        raise CalendarConflict(
+            f"Für „{period.label}“ sind bereits Ferien erfasst. Zum Ersetzen durch die amtlichen Termine "
+            "bitte bestätigen."
+        )
+
+    catalog = plan.catalog
+    before = closed_month_signature(db)
+    lo, hi = period.start, period.end
+    replaced: list[str] = []
+    for row in plan.removed:
+        lo, hi = min(lo, row.start), max(hi, row.end)
+        replaced.append(row.name)
+        db.delete(row)
+        _drop_schaetzung(db, [row.id])
+    db.flush()
+    updated: list[Ferien] = []
+    for key, row in plan.kept.items():
+        b = plan.wanted[key]
+        if not _row_in_sync(row, b, catalog):
+            row.name, row.kind, row.source, row.quelle_url = b.name, b.kind.value, SOURCE_KATALOG, catalog.source_url
+            updated.append(row)
+    created = _create_catalog_rows(db, period, catalog, plan.missing)
+    db.flush()
+    changed = guard_closed_months(db, before, reason)
+    rematerialize_range(db, lo, hi)
+    return CatalogApplyResult(created=created, updated=updated, replaced=replaced, unchanged=False,
+                              changed_months=changed)
 
 
 # =========================================================================== overrides

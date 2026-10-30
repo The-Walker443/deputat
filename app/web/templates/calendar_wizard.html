@@ -65,26 +65,55 @@
     <h2 class="card-title" id="w2-title">Ferien für {{ period.label }}</h2>
     <p class="admin-help">Ferientage haben ein Soll von 8 h × Teilzeitfaktor – hier entsteht der Abbau des
       Arbeitszeitkontos. Deshalb müssen die Ferien vollständig und korrekt sein.</p>
+    {% if catalog and catalog.katalog_count %}
+    <p class="banner banner-success" data-ferien-katalog>{{ icon("check", 18) }}<span class="banner-body">
+      <strong>Die amtlichen Ferientermine wurden übernommen.</strong> {{ cm.catalog_source(catalog) }}.
+      Die Termine kannst du bei Bedarf bearbeiten.</span></p>
+    {% endif %}
     {% if ferien %}
     <ul class="list">
       {% for f in ferien %}
       <li class="list-item">
         <div class="list-item-main">
-          <div class="list-item-title">{{ f.name }}</div>
+          <div class="list-item-title">{{ f.name }}{% if f.source == "katalog" %} <span class="badge badge-success">amtlich</span>{% endif %}</div>
           <div class="list-item-meta num">{{ f.start|date_de }} – {{ f.end|date_de }} · {{ ferien_kind_labels.get(f.kind, f.kind) }}{% if f.source == "ics" %} · ICS{% endif %}</div>
         </div>
       </li>
       {% endfor %}
     </ul>
     <p class="text-small"><a href="/kalender/ferien?periode={{ period.id }}">Ferien bearbeiten oder löschen</a></p>
+    {% if catalog and catalog.offer == "replace" %}
+    <div class="banner banner-warn" data-ferien-katalog>{{ icon("alert", 18) }}
+      <div class="banner-body stack-sm">
+        <p><strong>Die Ferien stammen aus der Beispieldatei („BEISPIEL“).</strong> Die amtlichen Termine sind
+          hinterlegt ({{ cm.catalog_source(catalog) }}); beim Übernehmen werden die bisherigen Ferien ersetzt.</p>
+        {{ cm.catalog_form(request, period, wizard_url ~ "&schritt=2", replace=True, closed_months=catalog_closed_months) }}
+      </div>
+    </div>
+    {% endif %}
+    {% elif catalog and catalog.offer == "apply" %}
+    <div class="banner banner-info" data-ferien-katalog>{{ icon("info", 18) }}
+      <div class="banner-body stack-sm">
+        <p><strong>Noch keine Ferien erfasst.</strong> Die amtlichen Termine für {{ period.label }} sind hinterlegt
+          ({{ cm.catalog_source(catalog) }}).</p>
+        {{ cm.catalog_form(request, period, wizard_url ~ "&schritt=2", closed_months=catalog_closed_months) }}
+      </div>
+    </div>
     {% else %}
-    <p class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">Noch keine Ferien erfasst.</span></p>
+    <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body"><strong>Noch keine Ferien erfasst.</strong>
+      {% if catalog and catalog.hint %}{{ catalog.hint }}{% endif %}</span></p>
     {% endif %}
   </section>
 
-  <section class="card stack-sm" aria-labelledby="w2-ics">
-    <h2 class="card-title" id="w2-ics">Aus ICS-Datei importieren</h2>
-    {{ cm.ics_form(request, period, True, example_ics_hint) }}
+  {% set alt_import = catalog and catalog.covered %}
+  <section class="card" aria-labelledby="w2-ics">
+    <details class="admin-details"{% if not ferien %} open{% endif %}>
+      <summary id="w2-ics">{{ "Andere Termine importieren (ICS-Datei)" if alt_import else "Aus ICS-Datei importieren" }}</summary>
+      <div class="mt-3 stack-sm">
+        {% if alt_import %}<p class="field-hint">Nur nötig, wenn deine Schule abweichende Termine hat (z. B. Berufsschule).</p>{% endif %}
+        {{ cm.ics_form(request, period, True, example_ics_hint) }}
+      </div>
+    </details>
   </section>
 
   <section class="card" aria-labelledby="w2-manual">

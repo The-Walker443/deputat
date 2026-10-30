@@ -199,7 +199,7 @@ class Ferien(Base):
     kind: Mapped[str] = mapped_column(String(16))  # FerienKind
     start: Mapped[date] = mapped_column(Date)
     end: Mapped[date] = mapped_column(Date)
-    source: Mapped[str] = mapped_column(String(16), default="manuell")  # 'manuell' | 'ics'
+    source: Mapped[str] = mapped_column(String(16), default="manuell")  # 'manuell' | 'ics' | 'katalog'
     quelle_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 

@@ -95,6 +95,7 @@ def test_unrelated_settings_change_needs_no_reason(db, closed_september):
     assert db.get(MonthClose, "2026-09").status == "abgeschlossen"
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_leave_mode_shortcut_refuses_without_reason(client, db, year):
     # Sommerferien reach into September: "Sommerferien zuerst" puts leave days there, "proportional" moves some.
     cal.create_ferien(db, year, name="Sommerferien", start=date(2026, 8, 3), end=date(2026, 9, 14))
@@ -140,6 +141,7 @@ def test_mid_year_start_without_erfassung_ab_is_a_big_deficit(db, year):
     assert ctx.saldo_heute < -200 * 3600
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_erfassung_ab_neutralises_earlier_days(db, year):
     settings_svc.update_settings(db, erfassung_ab=date(2026, 10, 26))
     for d in (date(2026, 10, 26), date(2026, 10, 27), date(2026, 10, 28), date(2026, 10, 29)):

@@ -5,6 +5,8 @@
   ``app.config.reset_config()`` afterwards.
 - ``db``: ORM Session on a freshly migrated + seeded SQLite file in tmp_path.
 - ``client``: ``fastapi.testclient.TestClient`` on ``create_app()`` (lifespan runs: migrate + seed).
+- ``no_ferien_catalog``: empty ferien catalogue, so new periods start without the official ferien (by default
+  the bundled ``config/ferien_bayern.yaml`` is used and covered school years get their ferien automatically).
 
 App imports happen inside the fixtures so the pure core tests never depend on the web stack.
 """
@@ -19,8 +21,17 @@ import pytest
 ENV_VARS = (
     "DATA_DIR", "DATABASE_URL", "APP_SECRET", "ALLOWED_HOSTS", "BACKUP_CRON", "BACKUP_RETENTION_DAYS",
     "BASE_URL", "LOG_LEVEL", "PROXY_TRUSTED_NETS", "CSRF_ENFORCE", "SESSION_MAX_AGE", "DEPUTAT_SCHEDULER",
-    "COOKIE_SECURE",
+    "COOKIE_SECURE", "FERIEN_CATALOG_FILE",
 )
+
+EMPTY_FERIEN_CATALOG = """\
+# Empty ferien catalogue for tests: periods start without the official ferien.
+bundesland: BY
+source_url: "https://example.invalid/leer"
+source_title: "Leerer Testkatalog"
+retrieved: 2026-10-30
+blocks: []
+"""
 
 
 @pytest.fixture(scope="session")
@@ -59,6 +70,18 @@ def settings_env(tmp_path, monkeypatch):
     reset_config()
     yield get_config()
     reset_config()
+
+
+@pytest.fixture
+def no_ferien_catalog(settings_env, tmp_path, monkeypatch):
+    """Empty ferien catalogue (``FERIEN_CATALOG_FILE``): new periods start without the official ferien.
+
+    For tests that build their own ferien scenario (ICS example, hand-made blocks).
+    """
+    path = tmp_path / "ferien_leer.yaml"
+    path.write_text(EMPTY_FERIEN_CATALOG, encoding="utf-8")
+    monkeypatch.setenv("FERIEN_CATALOG_FILE", str(path))
+    return path
 
 
 def _ensure_db_from_template(template, dst) -> None:

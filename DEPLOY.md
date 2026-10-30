@@ -29,6 +29,7 @@ LAN:     Browser ─http/https─▶ NPM (Pi-hole-Wildcard) ─http─▶ deputa
 | `BACKUP_RETENTION_DAYS` | nein | `14` | Aufbewahrung der In-Container-Backups |
 | `PROXY_TRUSTED_NETS` | nein | `172.16.0.0/12` | Peers, deren `X-Real-IP` im Log als Client-IP erscheint (nur Logging) |
 | `LOG_LEVEL` | nein | `info` | Log-Level |
+| `FERIEN_CATALOG_FILE` | nein | `/data/ferien_bayern.yaml` | Eigener/aktualisierter Ferienkatalog (gleiches Format wie `config/ferien_bayern.yaml` im Image). Leer = mitgelieferter Katalog. Ungültige Datei: Die App startet trotzdem, übernimmt aber keine Ferien (Fehler im Log). |
 
 Es gibt **keine** Login-Variablen: Die App hat bewusst keinen Login.
 
@@ -56,9 +57,11 @@ Es gibt **keine** Login-Variablen: Die App hat bewusst keinen Login.
 5. **Tunnel-Route** (Betreiber, CF-Dashboard) erst **jetzt** aktivieren. claude-ops prüft von außen, dass ohne
    Access-Login nur die Cloudflare-Loginseite erscheint.
 6. **In der App einrichten** (Nutzerin, Browser):
-   1. *Kalender*: Schuljahr anlegen (z. B. 2026/27), Ferien per ICS importieren (offizielle Termine des
-      Kultusministeriums – die Datei `examples/ferien_bayern_BEISPIEL.ics` ist nur ein Beispiel!) oder manuell erfassen,
-      regionale Feiertage prüfen (Mariä Himmelfahrt), Urlaubszuordnung kontrollieren.
+   1. *Kalender*: Schuljahr anlegen (z. B. 2026/27) – die amtlichen Ferien übernimmt die App automatisch aus dem
+      mitgelieferten Katalog (Schuljahre 2024/25 bis 2029/30); nur für andere Schuljahre per ICS importieren oder
+      manuell erfassen. Ist ein Schuljahr schon ohne Ferien oder mit den Beispiel-Ferien
+      (`examples/ferien_bayern_BEISPIEL.ics`) angelegt, bietet der Kalender „Amtliche Ferien übernehmen“ an.
+      Regionale Feiertage prüfen (Mariä Himmelfahrt), Urlaubszuordnung kontrollieren.
    2. *Einstellungen*: Name, Schule, UPZ, Geburtsdatum (Altersermäßigung), Klassen, Fächer, Zeitraster.
    3. *Stundenplan*: Version mit Gültigkeit anlegen.
    4. Optional *Import* bestehender Aufzeichnungen (CSV/XLSX).
@@ -144,3 +147,7 @@ Cloudflare-Access-Token nötig.
 - Läuft die Cloudflare-Access-Sitzung ab, zeigt die App beim Synchronisieren „Sitzung abgelaufen – bitte Seite neu
   laden / neu anmelden“; offline erfasste Timer-Aktionen bleiben dabei erhalten.
 - Root-Dateisystem ist read-only; die App schreibt nur nach `/data` und `/tmp`.
+- Ferienkatalog aktualisieren (neue Ferienordnung): entweder ein neues Image mit geänderter
+  `config/ferien_bayern.yaml` oder die Datei nach `/data/ferien_bayern.yaml` legen und
+  `FERIEN_CATALOG_FILE=/data/ferien_bayern.yaml` setzen. Neue Schuljahre bekommen die Termine beim Anlegen;
+  bestehende über *Kalender → Ferien → Durch amtliche Termine ersetzen*.

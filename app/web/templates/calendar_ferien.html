@@ -23,15 +23,36 @@
       {% endif %}
     </div>
 
+    {% if catalog and catalog.offer == "apply" %}
+    <div class="banner banner-info" data-ferien-katalog>{{ icon("info", 18) }}
+      <div class="banner-body stack-sm">
+        <p>Die amtlichen Ferientermine für {{ period.label }} sind in der App hinterlegt ({{ cm.catalog_source(catalog) }}).</p>
+        {{ cm.catalog_form(request, period, here, closed_months=catalog_closed_months) }}
+      </div>
+    </div>
+    {% elif catalog and catalog.offer == "replace" %}
+    <div class="banner banner-warn" data-ferien-katalog>{{ icon("alert", 18) }}
+      <div class="banner-body stack-sm">
+        <p><strong>Die Ferien stammen aus der Beispieldatei („BEISPIEL“).</strong> Die amtlichen Termine sind
+          hinterlegt ({{ cm.catalog_source(catalog) }}); beim Übernehmen werden die bisherigen Ferien ersetzt.</p>
+        {{ cm.catalog_form(request, period, here, replace=True, closed_months=catalog_closed_months) }}
+      </div>
+    </div>
+    {% elif catalog and catalog.in_sync %}
+    <p class="text-small text-muted">Amtliche Ferientermine – {{ cm.catalog_source(catalog) }}. Du kannst sie bei Bedarf bearbeiten.</p>
+    {% elif catalog and catalog.hint and not ferien %}
+    <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ catalog.hint }}</span></p>
+    {% endif %}
+
     {% if ferien %}
     <div>
       {% for f in ferien %}
       <div class="ferien-item" id="ferien-{{ f.id }}">
         <div class="ferien-head">
           <div class="grow">
-            <p class="text-strong">{{ f.name }}</p>
+            <p class="text-strong">{{ f.name }}{% if f.source == "katalog" %} <span class="badge badge-success" title="Amtlicher Termin aus dem Ferienkatalog der App">amtlich</span>{% endif %}</p>
             <p class="text-small text-muted num">{{ f.start|weekday_de }} {{ f.start|date_de }} – {{ f.end|weekday_de }} {{ f.end|date_de }}</p>
-            <p class="text-xs text-muted">{{ ferien_kind_labels.get(f.kind, f.kind) }} · {{ werktage.get(f.id, 0) }} Werktage{% if f.source == "ics" %} · aus ICS{% endif %}{% if f.quelle_url %} · Quelle: {{ f.quelle_url|truncate(60) }}{% endif %}</p>
+            <p class="text-xs text-muted">{{ ferien_kind_labels.get(f.kind, f.kind) }} · {{ werktage.get(f.id, 0) }} Werktage{% if f.source == "ics" %} · aus ICS{% endif %}{% if f.quelle_url and f.source != "katalog" %} · Quelle: {{ f.quelle_url|truncate(60) }}{% endif %}</p>
           </div>
           <form method="post" action="/kalender/ferien/{{ f.id }}/loeschen" data-confirm="„{{ f.name }}“ löschen?">
             {{ cm.csrf(request) }}
@@ -50,7 +71,7 @@
     {% else %}
     <div class="empty-state">
       <p class="h3">Noch keine Ferien</p>
-      <p class="text-small">Importiere den Ferienkalender als ICS-Datei oder trage die Ferien von Hand ein.</p>
+      <p class="text-small">{% if catalog and catalog.offer == "apply" %}Übernimm die amtlichen Termine oder trage die Ferien von Hand ein.{% else %}Importiere den Ferienkalender als ICS-Datei oder trage die Ferien von Hand ein.{% endif %}</p>
     </div>
     {% endif %}
   </section>
@@ -62,9 +83,22 @@
     </details>
   </section>
 
+  {% if catalog and catalog.can_replace and catalog.offer != "replace" %}
+  <section class="card" aria-labelledby="ferien-katalog">
+    <details class="admin-details">
+      <summary id="ferien-katalog">Durch amtliche Termine ersetzen</summary>
+      <div class="mt-3 stack-sm">
+        <p class="text-small">Ersetzt alle Ferien von {{ period.label }} durch die amtlichen Termine ({{ cm.catalog_source(catalog) }}).
+          Abschnitte mit genau den amtlichen Daten bleiben erhalten.</p>
+        {{ cm.catalog_form(request, period, here, replace=True, closed_months=catalog_closed_months, label="Amtliche Termine übernehmen", btn="btn-secondary") }}
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
   <section class="card" aria-labelledby="ferien-ics">
-    <details class="admin-details"{% if not ferien %} open{% endif %}>
-      <summary id="ferien-ics">ICS-Datei importieren</summary>
+    <details class="admin-details"{% if not ferien and not (catalog and catalog.covered) %} open{% endif %}>
+      <summary id="ferien-ics">{{ "Andere Termine importieren (ICS-Datei)" if catalog and catalog.covered else "ICS-Datei importieren" }}</summary>
       <div class="mt-3">{{ cm.ics_form(request, period, False, example_ics_hint) }}</div>
     </details>
   </section>

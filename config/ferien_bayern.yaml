@@ -1,0 +1,132 @@
+# Amtliche Ferientermine Bayern – mitgelieferter Ferienkatalog (app/services/ferien_catalog.py).
+#
+# Die App übernimmt diese Termine automatisch, wenn ein Schuljahr angelegt wird, das der Katalog vollständig
+# abdeckt (Bundesland BY). Ferien, die über eine Periodengrenze reichen (Sommerferien beginnen teils vor dem
+# 01.08.), werden auf die Periode zugeschnitten. Die übernommenen Termine lassen sich in der App bearbeiten.
+#
+# Eigene/aktualisierte Datei: Umgebungsvariable FERIEN_CATALOG_FILE auf eine Datei gleichen Formats setzen
+# (z. B. /data/ferien_bayern.yaml im Container-Volume).
+#
+# Format je Block: school_year (Gliederung wie in der Quelle), name, kind (FerienKind: herbst, weihnachten,
+# winter, ostern, pfingsten, sommer), start, end (erster und letzter Ferientag, beide einschließlich),
+# official (Wortlaut der Tabellenzeile in der Quelle).
+#
+# Gliederung: Wie in BayMBl. 2022 Nr. 747 stehen die Sommerferien, mit denen ein Schuljahr beginnt, in diesem
+# Schuljahr (z. B. 2026/27 beginnt mit „Sommerferien 2026“). Die App ordnet Ferien nach Datum der Periode zu;
+# school_year dient nur der Gliederung und Prüfung.
+#
+# Buß- und Bettag: steht NICHT als Ferienblock in dieser Datei. BayMBl. 2022 Nr. 747 führt ihn nicht auf (kein
+# Unterricht nach Art. 4 Nr. 3 Feiertagsgesetz); der ICS-Feed des Ministeriums nennt ihn als „unterrichtsfreier
+# Tag“ (19.11.2025, 18.11.2026, 17.11.2027, 22.11.2028, 21.11.2029). Die App berechnet ihn bereits selbst als
+# unterrichtsfreien Tag mit vollem Soll (app/core/calendar.py: buss_und_bettag) – Lehrkräfte sind an diesem Tag
+# nicht vom Dienst befreit (z. B. pädagogischer Tag möglich).
+#
+# Abgleich: Alle Termine stimmen mit dem ICS-Feed des Ministeriums überein (km.bayern.de/ferientermine-herunterladen,
+# DTEND dort exklusiv). Gegenprobe mit schulferien.org: alle dort genannten Termine identisch; die Sommerferien
+# führt schulferien.org beim vorangehenden Schuljahr (andere Gliederung, gleiche Daten), Sommerferien 2024 sowie
+# Herbst- und Weihnachtsferien 2024/25 fehlen dort. Es gilt jeweils der amtliche Wert.
+#
+# Nicht enthalten: Osterferien/Pfingstferien 2024 (Schuljahr 2023/24, nicht Teil der Ferienordnung 2024/25–2029/30).
+# 2030/31 ist unvollständig: Bisher ist nur der Termin der Sommerferien 2030 festgelegt.
+# Berufsschulen dürfen um bis zu 2 Tage abweichen (Nr. 1.2), Heimschulen auf Antrag um bis zu 6 weitere Tage (Nr. 1.3).
+
+bundesland: BY
+source_url: "https://www.verkuendung-bayern.de/baymbl/2022-747/"
+source_title: "BayMBl. 2022 Nr. 747: Ferienordnung und schulfreie Samstage für die Schuljahre 2024/2025 bis 2029/2030 (Bekanntmachung des StMUK vom 7. Dezember 2022, Az. IV.7-BS4407/521/59)"
+source_short: "Bayerisches Kultusministerium"
+source_page: "https://www.km.bayern.de/termine/ferien-und-feiertage"
+retrieved: 2026-10-30
+note: "Amtliche Termine des Bayerischen Kultusministeriums; vor Gebrauch nicht verändert"
+# Schuljahre, für die noch nicht alle Ferien festgelegt sind (werden nicht automatisch übernommen).
+partial_school_years: ["2030/31"]
+
+blocks:
+  # ------------------------------------------------------------------ 2024/25
+  - {school_year: "2024/25", name: "Sommerferien 2024", kind: sommer, start: 2024-07-29, end: 2024-09-09,
+     official: "Sommerferien 2024 | 29. Juli 2024 | 9. September 2024"}
+  - {school_year: "2024/25", name: "Herbstferien 2024", kind: herbst, start: 2024-10-28, end: 2024-10-31,
+     official: "unterrichtsfreie Tage um Allerheiligen 2024 | 28. Oktober 2024 | 31. Oktober 2024"}
+  - {school_year: "2024/25", name: "Weihnachtsferien 2024/25", kind: weihnachten, start: 2024-12-23, end: 2025-01-03,
+     official: "Weihnachtsferien 2024/2025 | 23. Dezember 2024 | 3. Januar 2025"}
+  - {school_year: "2024/25", name: "Frühjahrsferien 2025", kind: winter, start: 2025-03-03, end: 2025-03-07,
+     official: "Frühjahrsferien 2025 | 3. März 2025 | 7. März 2025"}
+  - {school_year: "2024/25", name: "Osterferien 2025", kind: ostern, start: 2025-04-14, end: 2025-04-25,
+     official: "Osterferien 2025 | 14. April 2025 | 25. April 2025"}
+  - {school_year: "2024/25", name: "Pfingstferien 2025", kind: pfingsten, start: 2025-06-10, end: 2025-06-20,
+     official: "Pfingstferien 2025 | 10. Juni 2025 | 20. Juni 2025"}
+
+  # ------------------------------------------------------------------ 2025/26
+  - {school_year: "2025/26", name: "Sommerferien 2025", kind: sommer, start: 2025-08-01, end: 2025-09-15,
+     official: "Sommerferien 2025 | 1. August 2025 | 15. September 2025"}
+  - {school_year: "2025/26", name: "Herbstferien 2025", kind: herbst, start: 2025-11-03, end: 2025-11-07,
+     official: "unterrichtsfreie Tage um Allerheiligen 2025 | 3. November 2025 | 7. November 2025"}
+  - {school_year: "2025/26", name: "Weihnachtsferien 2025/26", kind: weihnachten, start: 2025-12-22, end: 2026-01-05,
+     official: "Weihnachtsferien 2025/2026 | 22. Dezember 2025 | 5. Januar 2026"}
+  - {school_year: "2025/26", name: "Frühjahrsferien 2026", kind: winter, start: 2026-02-16, end: 2026-02-20,
+     official: "Frühjahrsferien 2026 | 16. Februar 2026 | 20. Februar 2026"}
+  - {school_year: "2025/26", name: "Osterferien 2026", kind: ostern, start: 2026-03-30, end: 2026-04-10,
+     official: "Osterferien 2026 | 30. März 2026 | 10. April 2026"}
+  - {school_year: "2025/26", name: "Pfingstferien 2026", kind: pfingsten, start: 2026-05-26, end: 2026-06-05,
+     official: "Pfingstferien 2026 | 26. Mai 2026 | 5. Juni 2026"}
+
+  # ------------------------------------------------------------------ 2026/27
+  - {school_year: "2026/27", name: "Sommerferien 2026", kind: sommer, start: 2026-08-03, end: 2026-09-14,
+     official: "Sommerferien 2026 | 3. August 2026 | 14. September 2026"}
+  - {school_year: "2026/27", name: "Herbstferien 2026", kind: herbst, start: 2026-11-02, end: 2026-11-06,
+     official: "unterrichtsfreie Tage um Allerheiligen 2026 | 2. November 2026 | 6. November 2026"}
+  - {school_year: "2026/27", name: "Weihnachtsferien 2026/27", kind: weihnachten, start: 2026-12-24, end: 2027-01-08,
+     official: "Weihnachtsferien 2026/2027 | 24. Dezember 2026 | 8. Januar 2027"}
+  - {school_year: "2026/27", name: "Frühjahrsferien 2027", kind: winter, start: 2027-02-08, end: 2027-02-12,
+     official: "Frühjahrsferien 2027 | 8. Februar 2027 | 12. Februar 2027"}
+  - {school_year: "2026/27", name: "Osterferien 2027", kind: ostern, start: 2027-03-22, end: 2027-04-02,
+     official: "Osterferien 2027 | 22. März 2027 | 2. April 2027"}
+  - {school_year: "2026/27", name: "Pfingstferien 2027", kind: pfingsten, start: 2027-05-18, end: 2027-05-28,
+     official: "Pfingstferien 2027 | 18. Mai 2027 | 28. Mai 2027"}
+
+  # ------------------------------------------------------------------ 2027/28
+  - {school_year: "2027/28", name: "Sommerferien 2027", kind: sommer, start: 2027-08-02, end: 2027-09-13,
+     official: "Sommerferien 2027 | 2. August 2027 | 13. September 2027"}
+  - {school_year: "2027/28", name: "Herbstferien 2027", kind: herbst, start: 2027-11-02, end: 2027-11-05,
+     official: "unterrichtsfreie Tage um Allerheiligen 2027 | 2. November 2027 | 5. November 2027"}
+  - {school_year: "2027/28", name: "Weihnachtsferien 2027/28", kind: weihnachten, start: 2027-12-24, end: 2028-01-07,
+     official: "Weihnachtsferien 2027/2028 | 24. Dezember 2027 | 7. Januar 2028"}
+  - {school_year: "2027/28", name: "Frühjahrsferien 2028", kind: winter, start: 2028-02-28, end: 2028-03-03,
+     official: "Frühjahrsferien 2028 | 28. Februar 2028 | 3. März 2028"}
+  - {school_year: "2027/28", name: "Osterferien 2028", kind: ostern, start: 2028-04-10, end: 2028-04-21,
+     official: "Osterferien 2028 | 10. April 2028 | 21. April 2028"}
+  - {school_year: "2027/28", name: "Pfingstferien 2028", kind: pfingsten, start: 2028-06-06, end: 2028-06-16,
+     official: "Pfingstferien 2028 | 6. Juni 2028 | 16. Juni 2028"}
+
+  # ------------------------------------------------------------------ 2028/29
+  - {school_year: "2028/29", name: "Sommerferien 2028", kind: sommer, start: 2028-07-31, end: 2028-09-11,
+     official: "Sommerferien 2028 | 31. Juli 2028 | 11. September 2028"}
+  - {school_year: "2028/29", name: "Herbstferien 2028", kind: herbst, start: 2028-10-30, end: 2028-11-03,
+     official: "unterrichtsfreie Tage um Allerheiligen 2028 | 30. Oktober 2028 | 3. November 2028"}
+  # Beginnt laut Quelle an einem Samstag (23.12.2028) – so übernommen.
+  - {school_year: "2028/29", name: "Weihnachtsferien 2028/29", kind: weihnachten, start: 2028-12-23, end: 2029-01-05,
+     official: "Weihnachtsferien 2028/2029 | 23. Dezember 2028 | 5. Januar 2029"}
+  - {school_year: "2028/29", name: "Frühjahrsferien 2029", kind: winter, start: 2029-02-12, end: 2029-02-16,
+     official: "Frühjahrsferien 2029 | 12. Februar 2029 | 16. Februar 2029"}
+  - {school_year: "2028/29", name: "Osterferien 2029", kind: ostern, start: 2029-03-26, end: 2029-04-06,
+     official: "Osterferien 2029 | 26. März 2029 | 6. April 2029"}
+  - {school_year: "2028/29", name: "Pfingstferien 2029", kind: pfingsten, start: 2029-05-22, end: 2029-06-01,
+     official: "Pfingstferien 2029 | 22. Mai 2029 | 1. Juni 2029"}
+
+  # ------------------------------------------------------------------ 2029/30
+  - {school_year: "2029/30", name: "Sommerferien 2029", kind: sommer, start: 2029-07-30, end: 2029-09-10,
+     official: "Sommerferien 2029 | 30. Juli 2029 | 10. September 2029"}
+  - {school_year: "2029/30", name: "Herbstferien 2029", kind: herbst, start: 2029-10-29, end: 2029-11-02,
+     official: "unterrichtsfreie Tage um Allerheiligen 2029 | 29. Oktober 2029 | 2. November 2029"}
+  - {school_year: "2029/30", name: "Weihnachtsferien 2029/30", kind: weihnachten, start: 2029-12-24, end: 2030-01-04,
+     official: "Weihnachtsferien 2029/2030 | 24. Dezember 2029 | 4. Januar 2030"}
+  - {school_year: "2029/30", name: "Frühjahrsferien 2030", kind: winter, start: 2030-03-04, end: 2030-03-08,
+     official: "Frühjahrsferien 2030 | 4. März 2030 | 8. März 2030"}
+  - {school_year: "2029/30", name: "Osterferien 2030", kind: ostern, start: 2030-04-15, end: 2030-04-26,
+     official: "Osterferien 2030 | 15. April 2030 | 26. April 2030"}
+  - {school_year: "2029/30", name: "Pfingstferien 2030", kind: pfingsten, start: 2030-06-11, end: 2030-06-21,
+     official: "Pfingstferien 2030 | 11. Juni 2030 | 21. Juni 2030"}
+
+  # ------------------------------------------------------------------ 2030/31 (unvollständig)
+  # Nur die Sommerferien 2030 sind festgelegt; ihre ersten Tage (29.–31.07.2030) fallen in die Periode 2029/30.
+  - {school_year: "2030/31", name: "Sommerferien 2030", kind: sommer, start: 2030-07-29, end: 2030-09-09,
+     official: "Die Sommerferien 2030 beginnen am 29. Juli 2030 und enden am 9. September 2030."}

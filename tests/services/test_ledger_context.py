@@ -20,6 +20,10 @@ from app.services import ledger
 from app.services import settings_service as settings_svc
 from app.util import local_to_utc, now_utc
 
+# These tests build their own ferien (ICS example or manual blocks): new periods start without the
+# official catalogue (tests/services/test_ferien_catalog.py covers the catalogue).
+pytestmark = pytest.mark.usefixtures("no_ferien_catalog")
+
 H = 3600
 EXAMPLE_ICS = Path(__file__).resolve().parents[2] / "examples" / "ferien_bayern_BEISPIEL.ics"
 TODAY = date(2026, 10, 29)

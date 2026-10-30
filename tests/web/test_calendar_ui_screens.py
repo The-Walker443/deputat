@@ -47,7 +47,11 @@ def test_wizard_flow(client):
     pid = _create(client)
     r = client.get(f"/kalender/einrichtung?periode={pid}&schritt=2")
     assert r.status_code == 200
-    assert "Aus ICS-Datei importieren" in r.text
+    assert "Die amtlichen Ferientermine wurden übernommen." in r.text
+    assert "Bayerisches Kultusministerium</a>, Stand 30.10.2026" in r.text
+    assert 'href="https://www.verkuendung-bayern.de/baymbl/2022-747/"' in r.text
+    assert r.text.count('class="badge badge-success">amtlich<') == 6
+    assert "Andere Termine importieren (ICS-Datei)" in r.text  # ICS import stays as optional alternative
     assert "BEISPIEL" in r.text and "Kultusministeriums" in r.text and "examples/" not in r.text
     r = client.get(f"/kalender/einrichtung?periode={pid}&schritt=3")
     assert "Mariä Himmelfahrt" in r.text and "Allerheiligen" in r.text
@@ -112,6 +116,7 @@ def test_manual_leave_counter(client):
         assert s.get(DayOverride, date(2026, 11, 3)).urlaub_manuell is True
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_ferien_crud(client):
     pid = _create(client)
     _add_ferien(client, pid, "Herbstferien", "2026-11-02", "2026-11-06")
@@ -128,6 +133,7 @@ def test_ferien_crud(client):
         assert s.get(Ferien, fid) is None
 
 
+@pytest.mark.usefixtures("no_ferien_catalog")  # builds its own ferien (no catalogue)
 def test_ics_preview_and_commit(client):
     pid = _create(client)
     content = EXAMPLE_ICS.read_bytes()
@@ -190,3 +196,161 @@ def test_no_inline_scripts_or_handlers():
         text = path.read_text(encoding="utf-8")
         assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", text), path.name
         assert not re.search(r"\son[a-z]+\s*=", text), path.name
+
+
+# --------------------------------------------------------------------------- official ferien (catalogue)
+
+
+def test_period_creation_flashes_official_ferien(client):
+    r = client.post("/kalender/perioden", data={"label": "2026/27"}, follow_redirects=True)
+    assert "6 amtliche Ferienabschnitte übernommen (Bayerisches Kultusministerium, Stand 30.10.2026)" in r.text
+    assert "Noch keine Ferien erfasst" not in r.text
+    r = client.get(f"/kalender/ferien?periode={_period_id()}")
+    assert r.text.count(">amtlich</span>") == 6
+    assert "Amtliche Ferientermine – Quelle:" in r.text
+    assert "Andere Termine importieren (ICS-Datei)" in r.text and "Durch amtliche Termine ersetzen" not in r.text
+
+
+def test_uncovered_year_shows_hint_and_fallbacks(client):
+    r = client.post("/kalender/perioden", data={"label": "2023/24", "wizard": "1"}, follow_redirects=True)
+    hint = "Für dieses Schuljahr sind keine amtlichen Termine hinterlegt – bitte per ICS importieren oder manuell erfassen"
+    assert hint in r.text
+    assert "Aus ICS-Datei importieren" in r.text and "Ferien von Hand eintragen" in r.text
+    assert "Amtliche Ferien übernehmen" not in r.text
+    r = client.get("/kalender")
+    assert "Noch keine Ferien erfasst" in r.text and hint in r.text
+
+
+def test_banner_offers_official_ferien_for_period_without_ferien(client):
+    with SessionLocal() as s:
+        from app.services import calendar_service as cal
+
+        pid = cal.create_period(s, "2026/27", apply_catalog=False).id
+    r = client.get("/kalender")
+    assert "data-ferien-katalog" in r.text and "Amtliche Ferien übernehmen" in r.text
+    assert 'action="/kalender/ferien/katalog"' in r.text and 'name="ersetzen"' not in r.text
+    r = client.post("/kalender/ferien/katalog", data={"periode": pid, "next": f"/kalender?periode={pid}"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/kalender?periode={pid}"
+    with SessionLocal() as s:
+        assert {f.source for f in s.scalars(select(Ferien))} == {"katalog"}
+        assert len(s.scalars(select(Ferien)).all()) == 6
+    r = client.get("/kalender")
+    assert "data-ferien-katalog" not in r.text
+    r = client.post("/kalender/ferien/katalog", data={"periode": pid}, follow_redirects=True)
+    assert "Die amtlichen Ferien sind bereits übernommen." in r.text
+
+
+def test_banner_offers_replacing_example_ferien(client):
+    with SessionLocal() as s:
+        from app.services import calendar_service as cal
+
+        period = cal.create_period(s, "2026/27", apply_catalog=False)
+        cal.commit_ics(s, period, EXAMPLE_ICS.read_bytes())
+        pid = period.id
+    r = client.get("/kalender")
+    assert "Die Ferien stammen aus der Beispieldatei" in r.text
+    assert 'name="ersetzen" value="1"' in r.text and "data-confirm=" in r.text
+    assert 'name="grund"' not in r.text  # no closed month in this period
+    r = client.get(f"/kalender/einrichtung?periode={pid}&schritt=2")
+    assert "Die Ferien stammen aus der Beispieldatei" in r.text
+
+    r = client.post("/kalender/ferien/katalog", data={"periode": pid, "ersetzen": "1", "next": "/kalender"},
+                    follow_redirects=True)
+    assert "6 amtliche Ferienabschnitt(e) übernommen." in r.text
+    assert "Die Ferien stammen aus der Beispieldatei" not in r.text
+    with SessionLocal() as s:
+        names = [f.name for f in s.scalars(select(Ferien).order_by(Ferien.start))]
+    assert names[0] == "Sommerferien 2026" and not any("BEISPIEL" in n for n in names)
+
+
+def test_replace_in_closed_month_asks_for_reason(client):
+    from datetime import datetime
+
+    from app.db.models import MonthClose
+    from app.services import calendar_service as cal
+    from app.services import entries as entries_svc
+
+    with SessionLocal() as s:
+        period = cal.create_period(s, "2026/27", apply_catalog=False)
+        cal.commit_ics(s, period, EXAMPLE_ICS.read_bytes())
+        herbst = s.scalars(select(Ferien).where(Ferien.kind == "herbst")).one()
+        cal.update_ferien(s, herbst.id, start=date(2026, 10, 26), end=date(2026, 10, 30))
+        s.add(MonthClose(year_month="2026-10", closed_at=datetime(2026, 11, 2, 10),
+                         entries_hash_sha256=entries_svc.month_entries_hash(s, "2026-10"),
+                         soll_seconds=0, ist_seconds=0, saldo_seconds=0))
+        s.commit()
+        pid = period.id
+    r = client.get("/kalender")
+    assert 'name="grund"' in r.text
+    r = client.post("/kalender/ferien/katalog", data={"periode": pid, "ersetzen": "1", "next": "/kalender"},
+                    follow_redirects=True)
+    assert "abgeschlossenen Monat 2026-10" in r.text and "Begründung" in r.text
+    with SessionLocal() as s:
+        assert any("BEISPIEL" in f.name for f in s.scalars(select(Ferien)))
+    r = client.post("/kalender/ferien/katalog",
+                    data={"periode": pid, "ersetzen": "1", "grund": "Beispieldaten ersetzt", "next": "/kalender"},
+                    follow_redirects=True)
+    assert "Nachträglich korrigiert: 2026-10." in r.text
+    with SessionLocal() as s:
+        assert not any("BEISPIEL" in f.name for f in s.scalars(select(Ferien)))
+        assert s.get(MonthClose, "2026-10").status == "nachtraeglich_korrigiert"
+
+
+def _close_month(s, ym: str) -> None:
+    from datetime import datetime
+
+    from app.db.models import MonthClose
+    from app.services import entries as entries_svc
+
+    s.add(MonthClose(year_month=ym, closed_at=datetime(2026, 11, 2, 10),
+                     entries_hash_sha256=entries_svc.month_entries_hash(s, ym),
+                     soll_seconds=0, ist_seconds=0, saldo_seconds=0))
+    s.commit()
+
+
+def test_apply_into_closed_month_asks_for_reason(client):
+    # No ferien yet, but November is closed: taking over the Herbstferien changes it -> reason field (no dead end).
+    from app.db.models import MonthClose
+    from app.services import calendar_service as cal
+
+    with SessionLocal() as s:
+        pid = cal.create_period(s, "2026/27", apply_catalog=False).id
+        _close_month(s, "2026-11")
+    for url in ("/kalender", f"/kalender/ferien?periode={pid}", f"/kalender/einrichtung?periode={pid}&schritt=2"):
+        r = client.get(url)
+        assert "Amtliche Ferien übernehmen" in r.text and 'type="hidden" name="ersetzen"' not in r.text, url
+        assert 'name="grund"' in r.text and "betrifft den abgeschlossenen Monat 2026-11" in r.text, url
+
+    r = client.post("/kalender/ferien/katalog", data={"periode": pid, "next": f"/kalender/ferien?periode={pid}"},
+                    follow_redirects=True)
+    assert "abgeschlossenen Monat 2026-11" in r.text and "Bitte im Feld „Begründung“ angeben" in r.text
+    assert 'name="grund"' in r.text  # the field the message points to is there
+    with SessionLocal() as s:
+        assert s.scalars(select(Ferien)).all() == []
+        assert s.get(MonthClose, "2026-11").status == "abgeschlossen"
+
+    r = client.post("/kalender/ferien/katalog",
+                    data={"periode": pid, "grund": "Amtliche Ferien nachgetragen", "next": "/kalender"},
+                    follow_redirects=True)
+    assert "6 amtliche Ferienabschnitt(e) übernommen." in r.text and "Nachträglich korrigiert: 2026-11." in r.text
+    with SessionLocal() as s:
+        assert len(s.scalars(select(Ferien)).all()) == 6
+        assert s.get(MonthClose, "2026-11").status == "nachtraeglich_korrigiert"
+
+
+def test_reason_field_for_closed_month_outside_the_period(client):
+    # An ICS row of 2027/28 reaches into August 2028 (period 2028/29): replacing it changes that closed month.
+    from app.services import calendar_service as cal
+
+    with SessionLocal() as s:
+        p2728 = cal.create_period(s, "2027/28", apply_catalog=False)
+        cal.create_period(s, "2028/29", apply_catalog=False)
+        cal.create_ferien(s, p2728, name="Sommerferien 2028", start=date(2028, 7, 31), end=date(2028, 9, 11),
+                          source="ics")
+        pid = p2728.id
+        r = client.get(f"/kalender/ferien?periode={pid}")
+        assert "Amtliche Termine übernehmen" in r.text and 'name="grund"' not in r.text
+        _close_month(s, "2028-08")
+    r = client.get(f"/kalender/ferien?periode={pid}")
+    assert 'name="grund"' in r.text and "betrifft den abgeschlossenen Monat 2028-08" in r.text
