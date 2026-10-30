@@ -1,0 +1,233 @@
+/* Deputat – screens Monate & Berichte, Export & Backup, Import (loaded by months*.html, export.html, import*.html
+   and injected into report views for the toolbar). Builds on the tokens and components of app.css.
+   Sections: chart tokens · month list · month detail · close dialog · Mehrarbeit · report toolbar · export ·
+             import wizard · print */
+
+/* ------------------------------------------------------------------ chart tokens (read by months.js) */
+:root {
+  --months-chart-pos: #18794e;
+  --months-chart-neg: #c4302b;
+  --months-chart-line: #2453c9;
+  --months-chart-grid: rgba(26, 31, 38, 0.08);
+  --months-chart-text: #5b6573;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --months-chart-pos: #4cc38a;
+    --months-chart-neg: #ff7b72;
+    --months-chart-line: #6e9bff;
+    --months-chart-grid: rgba(232, 235, 239, 0.09);
+    --months-chart-text: #a3acb8;
+  }
+}
+
+.months-flip { transform: rotate(180deg); }
+
+/* ------------------------------------------------------------------ month list */
+.months-period { display: flex; gap: var(--space-2); }
+.months-period select { flex: 1; min-width: 0; }
+
+.months-table { min-width: 560px; }
+.months-table th, .months-table td { vertical-align: middle; }
+.months-table .months-name {
+  white-space: nowrap; font-weight: 600; font-size: var(--fs-sm); text-transform: none; letter-spacing: normal;
+  color: var(--text); background: transparent;
+}
+.months-table tbody tr:last-child th { border-bottom: 0; }
+.months-table .months-name a { display: inline-flex; align-items: center; min-height: 32px; }
+.months-table .months-name .badge { margin-left: var(--space-1); }
+.months-table tr.is-future { color: var(--text-faint); }
+.months-table tr.is-current { background: var(--primary-soft); }
+.months-table tbody tr.is-current:hover { background: var(--primary-soft); }
+.months-hash { font-size: var(--fs-xs); color: var(--text-muted); }
+.months-chart { height: 220px; }
+
+/* ------------------------------------------------------------------ month detail */
+.months-head { align-items: center; }
+.months-closed .card-title { display: flex; align-items: center; gap: var(--space-2); color: var(--success); }
+.months-hash-full {
+  display: block; margin-top: var(--space-1); padding: var(--space-2) var(--space-3);
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  font-size: var(--fs-xs); word-break: break-all; user-select: all;
+}
+.months-history-item { flex-direction: column; align-items: stretch; gap: var(--space-1); padding-left: 0; padding-right: 0; }
+
+.months-check-ok { display: flex; align-items: center; gap: var(--space-2); color: var(--success); font-weight: 600; }
+.months-items .months-item { padding-left: 0; padding-right: 0; }
+.months-item-icon { display: inline-flex; color: var(--warn); flex: none; }
+.months-item.is-blocking .months-item-icon { color: var(--danger); }
+.months-item .btn { flex: none; min-height: 44px; }
+.months-item .list-item-meta { display: block; }
+.months-more { margin-top: var(--space-2); }
+.months-more > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--primary); font-weight: 600; }
+
+/* ------------------------------------------------------------------ close dialog */
+.months-dialog {
+  width: min(560px, calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--gutter));
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+}
+.months-dialog::backdrop { background: rgb(10 14 20 / 0.55); }
+.months-bullets { margin: 0; padding-left: 1.2em; font-size: var(--fs-sm); color: var(--text-muted); }
+.months-bullets li + li { margin-top: var(--space-1); }
+.months-close-form .check { align-items: flex-start; }
+.months-close-form .check input { margin-top: 2px; flex: none; }
+.months-confirm { padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius); font-size: var(--fs-sm); }
+.months-dialog-actions .btn { flex: 1 1 auto; }
+
+/* ------------------------------------------------------------------ Mehrarbeit */
+.months-ma-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
+@media (min-width: 640px) { .months-ma-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.months-ma-fig {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3);
+  background: var(--surface-2); border-radius: var(--radius);
+}
+.months-ma-val { font-size: var(--fs-xl); font-weight: 680; font-variant-numeric: tabular-nums; }
+.months-ma-fig.is-due { background: var(--warn-soft); }
+.months-ma-fig.is-due .months-ma-val { color: var(--warn); }
+
+/* ------------------------------------------------------------------ report toolbar (self-contained: no app.css) */
+.months-report-bar {
+  position: sticky; top: 0; z-index: 10;
+  margin: -1px 0 16px; padding: 8px 16px;
+  background: var(--surface, #fff); color: var(--text, #1a1f26);
+  border-bottom: 1px solid var(--border, #dde1e7);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 14px;
+}
+.months-report-bar-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 1100px; margin: 0 auto; }
+.months-rb-mode { flex: 1 1 200px; color: #5b6573; }
+.months-rb-mode.is-warn { color: #9a5b00; font-weight: 600; }
+.months-rb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.months-rb-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px;
+  border: 1px solid #c5cbd4; border-radius: 10px; background: #fff; color: #1a1f26;
+  font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.months-rb-btn:hover { background: #f0f2f5; }
+.months-rb-back { border-color: transparent; background: transparent; color: #2453c9; padding-left: 0; }
+.months-rb-primary { background: #2453c9; border-color: #2453c9; color: #fff; }
+.months-rb-primary:hover { background: #1d45ab; }
+/* On phones the three-row bar would cover a sixth of the screen while scrolling the report. */
+@media (max-width: 639px) { .months-report-bar { position: static; } }
+@media print { .months-report-bar { display: none !important; } }
+
+/* ------------------------------------------------------------------ export */
+.export-card-head { display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-3); }
+.export-kind {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: var(--radius);
+  background: var(--primary-soft); color: var(--primary); font-weight: 750; font-size: var(--fs-sm); letter-spacing: 0.03em;
+}
+.export-card-head .h3 { margin-bottom: 2px; }
+.export-backup-head { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
+.export-backup-head > div { flex: 1 1 240px; min-width: 0; }
+.export-backup-head code { word-break: break-all; }
+.export-file-name { display: block; font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-all; }
+.export-files td { vertical-align: middle; }
+.export-files .btn-sm { min-height: 44px; }
+.export-log > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.export-log .list-item { padding-left: 0; padding-right: 0; align-items: flex-start; }
+.export-restore { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+
+/* ------------------------------------------------------------------ import wizard */
+.import-steps {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-1);
+  margin: 0; padding: 0; list-style: none; counter-reset: none;
+}
+.import-step {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0;
+  font-size: var(--fs-xs); color: var(--text-faint); text-align: center;
+}
+.import-step::before {
+  content: ""; display: block; width: 100%; height: 3px; border-radius: 2px; background: var(--surface-3);
+  order: -1; margin-bottom: 4px;
+}
+.import-step-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-3); color: var(--text-muted); font-weight: 700;
+}
+.import-step-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-step.is-done, .import-step.is-current { color: var(--text); }
+.import-step.is-done::before, .import-step.is-current::before { background: var(--primary); }
+.import-step.is-done .import-step-no { background: var(--primary-soft); color: var(--primary); }
+.import-step.is-current .import-step-no { background: var(--primary); color: var(--primary-contrast); }
+.import-step.is-current .import-step-label { font-weight: 650; }
+
+.import-memory td { overflow-wrap: anywhere; }
+.import-memory td:last-child { width: 1%; padding-left: 0; }
+.import-memory .btn-sm { min-height: 44px; padding-inline: var(--space-2); }
+
+.import-batch { align-items: flex-start; flex-wrap: wrap; }
+.import-batch .list-item-title { white-space: normal; word-break: break-word; }
+.import-batch-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.import-batch-actions .btn-sm { min-height: 44px; }
+@media (max-width: 520px) {
+  .import-batch-actions { width: 100%; justify-content: flex-start; }
+}
+
+.import-file-facts dd { word-break: break-word; }
+.import-sheet-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 44px; }
+.import-sheet-row .btn-sm { min-height: 44px; }
+.import-header-field input { max-width: 220px; }
+
+.import-preview-wrap { max-height: 60vh; overflow: auto; }
+.import-preview th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; white-space: nowrap; }
+.import-preview td { white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.import-col-letter {
+  display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 2px; border-radius: 4px;
+  background: var(--surface-3); color: var(--text-muted); font-size: var(--fs-xs); text-align: center;
+}
+
+.import-map-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+@media (min-width: 640px) { .import-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.import-map-field select { width: 100%; }
+.import-map-field.is-mapped select { border-color: var(--primary); }
+.import-req {
+  display: inline-block; margin-left: var(--space-1); padding: 0 6px; border-radius: var(--radius-pill);
+  background: var(--danger-soft); color: var(--danger); font-size: var(--fs-xs); font-weight: 650;
+}
+.import-req-soft { background: var(--surface-3); color: var(--text-muted); }
+
+.import-hints { margin: 0; padding-left: 1.1em; }
+.import-hints li + li { margin-top: 2px; }
+
+.import-cat-table { min-width: 480px; }
+.import-cat-table td { vertical-align: middle; }
+.import-cat-table tr.is-unmapped td:first-child { color: var(--danger); font-weight: 600; }
+.import-cat-select { width: 100%; min-width: 200px; }
+
+.import-rows-wrap { max-height: 70vh; overflow: auto; }
+.import-rows { min-width: 640px; }
+.import-rows th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; }
+.import-row.is-fehler { background: var(--danger-soft); }
+.import-row.is-duplikat { background: var(--warn-soft); }
+.import-rows tbody tr.import-row.is-fehler:hover { background: var(--danger-soft); }
+.import-rows tbody tr.import-row.is-duplikat:hover { background: var(--warn-soft); }
+.import-row.is-excluded td { color: var(--text-faint); text-decoration: line-through; }
+.import-row.is-excluded td:last-child { text-decoration: none; }
+.import-msg { min-width: 220px; }
+.import-msg-error, .import-msg-warn { display: block; }
+.import-msg-error { color: var(--danger); font-weight: 600; }
+.import-msg-warn { color: var(--warn); }
+.import-row-check { margin-top: var(--space-1); font-size: var(--fs-sm); min-height: 32px; }
+.import-all-rows > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; color: var(--primary); }
+
+.import-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.import-actions .btn-lg { flex: 1 1 100%; }
+@media (min-width: 640px) { .import-actions .btn-lg { flex: 0 1 auto; } }
+
+.is-busy { opacity: 0.7; pointer-events: none; }
+
+/* File pickers (import upload, JSON restore): a full-width 44px touch target. */
+.import-upload-file, .export-restore input[type="file"] {
+  display: block; width: 100%; min-height: 44px; padding: var(--space-2);
+  border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+
+/* ------------------------------------------------------------------ print */
+@media print {
+  .months-dialog, .import-actions, .export-restore { display: none !important; }
+}

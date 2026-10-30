@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{# Standalone slot editor (no JS / direct link / re-render after a validation error). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+  <script src="{{ static_url('js/admin.js') }}" defer></script>
+  <script src="{{ static_url('js/timetable.js') }}" defer></script>
+{% endblock %}
+{% block content %}
+<div class="stack admin">
+  <p><a href="{{ back }}" class="text-small admin-back">← zurück zum Stundenplan</a></p>
+  {% include "partials/timetable_slot_form.html" %}
+</div>
+{% endblock %}

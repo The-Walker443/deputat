@@ -1,0 +1,92 @@
+{% from "partials/icons.html" import icon %}
+{# Timer card. Initial markup mirrors the server state; timer.js re-renders it from state + offline queue. #}
+{% set run = state.running %}
+{% set pause = state.paused %}
+{% set first = chips[0] if chips else none %}
+<section class="card timer-card" data-timer aria-label="Timer">
+  <button type="button" class="btn-timer{% if run %} is-running{% elif pause %} is-paused{% endif %}" data-timer-main
+          aria-describedby="timer-sub">
+    <span class="timer-cat" data-timer-cat>
+      {% set c = run or pause or first %}
+      <span class="chip-dot" data-timer-dot{% if c %} style="--chip-color: {{ c.color }}"{% endif %}></span>
+      <span class="truncate" data-timer-cat-label>{% if c %}{{ c.code }} · {{ c.name }}{% else %}Keine Kategorie{% endif %}</span>
+    </span>
+    <span class="timer-clock" data-timer-clock>{% if run %}…{% elif pause %}Weiter{% else %}Start{% endif %}</span>
+    <span class="timer-sub" id="timer-sub" data-timer-sub>
+      {%- if run %}Tippen zum Beenden{% elif pause %}Pausiert – tippen zum Fortsetzen{% else %}Tippen zum Starten{% endif -%}
+    </span>
+  </button>
+
+  <div class="timer-actions" data-timer-actions>
+    <button type="button" class="btn btn-secondary btn-lg" data-timer-pause{% if not run %} hidden{% endif %}>
+      {{ icon("pause", 18) }} Pause
+    </button>
+    <button type="button" class="btn btn-primary btn-lg" data-timer-resume{% if not pause or run %} hidden{% endif %}>
+      {{ icon("play", 18) }} Weiter
+    </button>
+    <button type="button" class="btn btn-secondary btn-lg" data-timer-stop{% if not run and not pause %} hidden{% endif %}>
+      {{ icon("stop", 18) }} Beenden
+    </button>
+  </div>
+
+  <p class="timer-meta text-small text-muted" data-timer-meta{% if not run %} hidden{% endif %}></p>
+
+  <h2 class="section-title mt-4" id="chips-title">Kategorie {% if run %}wechseln{% else %}starten{% endif %}</h2>
+  <div class="chip-row timer-chips" data-chips role="group" aria-labelledby="chips-title">
+    {% for c in chips %}
+    <button type="button" class="chip chip-lg" style="--chip-color: {{ c.color }}" data-chip
+            data-category-id="{{ c.id }}" data-code="{{ c.code }}" data-name="{{ c.name }}" data-color="{{ c.color }}"
+            {% if c.is_unterricht %}data-unterricht="1" {% endif %}{% if c.requires_note %}data-requires-note="1" {% endif %}
+            aria-pressed="{{ 'true' if run and run.category_id == c.id else 'false' }}" title="{{ c.name }}">
+      <span class="chip-dot"></span><span class="chip-code">{{ c.code }}</span><span class="chip-label">{{ c.name }}</span>
+    </button>
+    {% endfor %}
+  </div>
+
+  <details class="timer-details" data-timer-details>
+    <summary>Angaben für den nächsten Start <span class="text-muted">(optional)</span></summary>
+    <div class="form-row form-row-3 mt-3">
+      <div class="field">
+        <label for="timer-klasse">Klasse</label>
+        <select id="timer-klasse" data-timer-field="klasse">
+          <option value="">–</option>
+          {% for k in klassen %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="timer-fach">Fach</label>
+        <select id="timer-fach" data-timer-field="fach">
+          <option value="">–</option>
+          {% for f in faecher %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="timer-ort">Ort</label>
+        <select id="timer-ort" data-timer-field="location">
+          <option value="">Automatisch{% if default_location %} ({{ default_location }}){% endif %}</option>
+          {% for value, label in locations.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field mt-3">
+      <label for="timer-notiz">Notiz</label>
+      <input id="timer-notiz" data-timer-field="note" maxlength="500" placeholder="z. B. Elterngespräch vorbereitet (ohne Namen)">
+      <span class="field-hint">Pflicht bei „Sonstiges“: erst die Notiz eintragen, dann die Kategorie antippen.</span>
+    </div>
+    <fieldset class="fieldset timer-flags mt-3">
+      <legend>Kennzeichen</legend>
+      <div class="timer-flag-list">
+        {% for value, label in timer_flags_all %}
+        <label class="check"><input type="checkbox" data-timer-flag="{{ value }}"> {{ label }}</label>
+        {% endfor %}
+        {% for value, label in timer_flags_u %}
+        <label class="check"><input type="checkbox" data-timer-flag="{{ value }}" data-flag-unterricht> {{ label }}</label>
+        {% endfor %}
+      </div>
+      <span class="field-hint">Vertretung angeordnet/genehmigt gilt nur bei Unterricht (Mehrarbeit) und wird bei
+        anderen Kategorien ignoriert.</span>
+    </fieldset>
+    <p class="field-hint mt-2">Automatisch: Mo–Fr 07:00–14:00 Schule, sonst Zuhause (Einstellungen).
+      Die Angaben gelten für den nächsten Start und werden danach zurückgesetzt.</p>
+  </details>
+</section>

@@ -1,0 +1,34 @@
+{% from "partials/icons.html" import icon %}
+{# Konzept §6.2: both leave modes side by side, display only. The configured mode is "maßgeblich". #}
+{% if state == "no_period" %}
+<p class="text-small text-muted">Noch kein Schuljahr angelegt.</p>
+{% elif state != "ok" or not rows %}
+<p class="text-small text-muted">Der Vergleich ist gerade nicht verfügbar.</p>
+{% else %}
+<div class="acct-compare" data-leave-compare>
+  {% for r in rows %}
+  <div class="acct-compare-col{% if r.massgeblich %} is-massgeblich{% endif %}">
+    <div class="row-between">
+      <span class="text-strong">{{ r.vergleich_label }}</span>
+      {% if r.massgeblich %}<span class="badge badge-primary">maßgeblich</span>{% endif %}
+    </div>
+    <dl class="dl mt-2">
+      <dt>Saldo heute</dt><dd>{{ r.saldo_heute|hm(plus=True) }}</dd>
+      <dt>Prognose Periodenende</dt><dd>{{ r.prognose_ende|hm(plus=True) }}</dd>
+      <dt>Periodenende, falls nichts mehr erfasst wird</dt><dd>{{ r.saldo_periodenende|hm(plus=True) }}</dd>
+      {% if r.urlaub and r.urlaub.assigned is defined %}<dt>Urlaubstage zugeordnet</dt><dd>{{ r.urlaub.assigned }}</dd>{% endif %}
+    </dl>
+    {% if r.urlaub and r.urlaub.per_ferien is defined %}
+    <p class="text-xs text-muted mt-2">Urlaub in:
+      {% for pf in r.urlaub.per_ferien if pf.urlaubstage %}{{ pf.name }}: {{ pf.urlaubstage }} Tag{{ "e" if pf.urlaubstage != 1 }}{% if not loop.last %} · {% endif %}{% else %}–{% endfor %}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% if not conf_in_rows %}
+<p class="text-small mt-3"><span class="badge badge-primary">maßgeblich</span> ist der eingestellte Modus „{{ conf_mode_label }}“.</p>
+{% endif %}
+<p class="text-xs text-muted mt-3">Der Saldo im Jahresverlauf hängt davon ab, wann die 30 Urlaubstage liegen; am Periodenende sind beide
+  Varianten gleich, wenn alle Urlaubstage innerhalb der Periode liegen. Ändern unter
+  <a href="/kalender">Kalender</a> bzw. <a href="/einstellungen">Einstellungen</a>.</p>
+{% endif %}

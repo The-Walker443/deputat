@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Konto" (Konzept §9.1). Chart: static/js/charts.js reads /konto/daten.json (same view switches);
+   tiles + Ferien-Guthaben-Rechner are HTMX partials refreshed on the body event "deputat-konto-changed". #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/account.css') }}">
+  <script src="{{ static_url('vendor/chart.umd.min.js') }}" defer></script>
+  <script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% set vq = ("?" ~ view_query) if view_query else "" %}
+{% if res.state == "no_period" %}
+  {% include "partials/account_no_period.html" %}
+{% elif not res.ok %}
+<div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ res.message }}</span></div>
+{% else %}
+<div class="acct stack-lg" data-account>
+  <p class="text-muted text-small">Schuljahr {{ ctx.period.label }} · {{ ctx.period.start|date_de }}–{{ ctx.period.end|date_de }}
+    · Stand {{ today|date_de }}</p>
+
+  {% if switches.mode_differs or switches.var_differs %}
+  <div class="banner banner-info" role="status">
+    {{ icon("info", 18) }}
+    <span class="banner-body">
+      <strong>Vergleichsansicht:</strong>
+      {% if switches.mode_differs %}Urlaub „{{ switches.shown_mode_label }}“ statt „{{ switches.conf_mode_label }}“.{% endif %}
+      {% if switches.var_differs %} Klassenfahrt-Variante {{ switches.shown_var_label }}.{% endif %}
+      Maßgeblich für Konto und Berichte bleiben die Einstellungen.
+      <a href="/konto">Zur maßgeblichen Ansicht</a>
+    </span>
+  </div>
+  {% endif %}
+
+  <section class="card acct-chart-card" aria-labelledby="chart-title">
+    <div class="row-between acct-chart-head">
+      <h2 class="card-title" id="chart-title">Saldo über die Periode</h2>
+      <span class="text-xs text-muted">Stunden</span>
+    </div>
+    <div class="chart-box acct-chart" data-saldo-chart data-src="/konto/daten.json{{ vq }}">
+      <canvas aria-label="Liniendiagramm: Saldo gegenüber dem Referenz-40h-Job über das Schuljahr, mit Prognose bis Periodenende" role="img"></canvas>
+      <p class="acct-chart-fallback text-small text-muted" data-chart-fallback>Diagramm wird geladen …</p>
+    </div>
+    <ul class="acct-legend" aria-label="Legende">
+      <li><span class="lg lg-line"></span>Saldo</li>
+      <li><span class="lg lg-dash"></span>Prognose</li>
+      <li><span class="lg lg-zero"></span>{{ zero_label }} (0)</li>
+      <li><span class="lg lg-ferien"></span>Ferien</li>
+      <li><span class="lg lg-urlaub"></span>Urlaub</li>
+      <li><span class="lg lg-holiday"></span>Feiertag</li>
+      {% if geltendmachung %}<li><span class="lg lg-gm"></span>Geltendmachung</li>{% endif %}
+    </ul>
+    {% if geltendmachung %}
+    <p class="text-small mt-2 acct-gm" data-geltendmachung>
+      <span class="badge badge-primary">Geltendmachung wirksam ab {{ geltendmachung.wirksam_ab|date_de }}</span>
+      <span class="text-muted">versendet am {{ geltendmachung.sent|date_de }}</span>
+    </p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="tiles-title">
+    <h2 class="section-title" id="tiles-title">Kennzahlen</h2>
+    <div id="acct-tiles" hx-get="/konto/teil/kacheln{{ vq }}" hx-trigger="deputat-konto-changed from:body" hx-swap="innerHTML">
+      {% include "partials/account_tiles.html" %}
+    </div>
+  </section>
+
+  <section class="card" id="ferienrechner" aria-labelledby="rechner-title">
+    <h2 class="card-title" id="rechner-title">Ferien-Guthaben-Rechner</h2>
+    <p class="text-small text-muted mb-3">Abbau-Kapazität = Soll der Ferien-Werktage ohne Urlaub. Trage ein, wie viele Stunden du
+      in den Ferien voraussichtlich arbeitest – leer lassen nimmt das Mittel früherer gleichartiger Ferien.</p>
+    <div id="acct-rechner">
+      {% include "partials/account_ferienrechner.html" %}
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="ansicht-title">
+    <h2 class="card-title" id="ansicht-title">Ansicht umschalten</h2>
+    <p class="text-small text-muted mb-3">Nur zur Anzeige – maßgeblich ist, was in den Einstellungen steht.</p>
+    <div class="stack">
+      <div class="stack-sm">
+        <span class="label" id="sw-urlaub">Urlaubsmodus</span>
+        <nav class="acct-switch" aria-labelledby="sw-urlaub">
+          {% for o in switches.modes %}
+          <a href="{{ o.href }}" class="acct-switch-opt{% if o.active %} is-active{% endif %}"{% if o.active %} aria-current="true"{% endif %}>
+            <span>{{ o.label }}</span>{% if o.massgeblich %}<small>maßgeblich</small>{% endif %}
+          </a>
+          {% endfor %}
+        </nav>
+      </div>
+      <div class="stack-sm">
+        <span class="label" id="sw-kf">Klassenfahrt-Variante</span>
+        <nav class="acct-switch" aria-labelledby="sw-kf">
+          {% for o in switches.varianten %}
+          <a href="{{ o.href }}" class="acct-switch-opt{% if o.active %} is-active{% endif %}"{% if o.active %} aria-current="true"{% endif %}>
+            <span>{{ o.label }}</span>{% if o.massgeblich %}<small>maßgeblich</small>{% endif %}
+          </a>
+          {% endfor %}
+        </nav>
+        <p class="text-xs text-muted">A: alle Stunden inkl. Nachtbereitschaft · B: auf die eingestellte Tageshöchstzahl gekappt, ohne Nachtbereitschaft.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="vergleich-title">
+    <h2 class="card-title" id="vergleich-title">Urlaubsmodus im Vergleich</h2>
+    <div id="acct-leave-compare" hx-get="/konto/teil/urlaubsvergleich" hx-trigger="load, deputat-konto-changed from:body" hx-swap="innerHTML">
+      <p class="text-small text-muted"><span class="spinner" aria-hidden="true"></span> Wird berechnet …</p>
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

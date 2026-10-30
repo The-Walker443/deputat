@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Month overview (Konzept §10.1, §6.6): figures, open items, Mehrarbeit, close + hash. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/months.js') }}" defer></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-icon" href="/monate/{{ prev_ym }}" aria-label="Vorheriger Monat">{{ icon("chevron-left", 20) }}</a>
+<a class="btn btn-ghost btn-icon" href="/monate/{{ next_ym }}" aria-label="Nächster Monat">{{ icon("chevron-right", 20) }}</a>
+{% endblock %}
+
+{% block content %}
+<div class="months-detail stack">
+  <div class="row-between months-head">
+    <p class="text-small text-muted">
+      <a href="/monate?periode={{ ov.period_id }}">Schuljahr {{ ov.period_label }}</a>
+      {% if ov.laufend %} · Stand {{ ov.stichtag|date_de }}{% endif %}
+    </p>
+    <span class="badge {{ status_badges.get(ov.status, 'badge-outline') }}" data-month-status>{{ ov.status_label }}</span>
+  </div>
+
+  {% if ov.is_closed %}
+  {% set a = ov.abschluss %}
+  <section class="card months-closed" aria-labelledby="closed-title">
+    <div class="row-between">
+      <h2 class="card-title" id="closed-title">{{ icon("check", 20) }} Abgeschlossen am {{ a.closed_at|datetime_de }}</h2>
+    </div>
+    {% if just_closed or ov.status == "abgeschlossen" %}
+    <div class="banner banner-info mb-3" role="note">
+      {{ icon("info", 18) }}
+      <span class="banner-body"><strong>Bericht jetzt exportieren und an die eigene Mailadresse senden</strong>
+        (Mail-Zeitstempel als externer Nachweis).</span>
+    </div>
+    {% endif %}
+    <dl class="dl">
+      <dt>Soll</dt><dd>{{ a.soll_seconds|hm }}</dd>
+      <dt>Ist</dt><dd>{{ a.ist_seconds|hm }}</dd>
+      <dt>Saldo</dt><dd>{{ a.saldo_seconds|hm(plus=True) }}</dd>
+    </dl>
+    {% if a.note or a.forced_items %}
+    <div class="banner banner-warn mt-3" role="note" data-close-note-display>
+      {{ icon("alert", 18) }}
+      <span class="banner-body"><strong>Abschluss trotz offener Punkte.</strong>
+        {% if a.note %}Begründung: „{{ a.note }}“{% endif %}
+        {% if a.forced_items %}
+        <ul class="list text-small mt-2">
+          {% for i in a.forced_items %}<li>{{ i.message }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+    <p class="label mt-3">{% if ov.status == "nachtraeglich_korrigiert" %}Aktueller Prüf-Hash{% else %}Prüf-Hash{% endif %} (SHA-256)</p>
+    <code class="months-hash-full" data-copy-text>{{ a.hash }}</code>
+    {% if ov.status == "nachtraeglich_korrigiert" %}
+    <div class="banner banner-warn mt-3" role="note">
+      {{ icon("alert", 18) }}
+      <span class="banner-body">Nachträglich korrigiert{% if a.corrected_at %} am {{ a.corrected_at|datetime_de }}{% endif %}.
+        Der gespeicherte Bericht zeigt die Abschluss-Fassung; der aktuelle Stand hat einen anderen Hash.</span>
+    </div>
+    {% if a.hash_history %}
+    <details class="mt-2">
+      <summary class="text-small">Frühere Hashes ({{ a.hash_history|length }})</summary>
+      <ul class="list text-small">
+        {% for h in a.hash_history %}
+        <li class="list-item months-history-item">
+          <code class="months-hash-full">{{ h.hash }}</code>
+          <span class="text-muted">{% if h.replaced_at %}ersetzt am {{ h.replaced_at[:10] }}{% endif %}{% if h.reason %} · {{ h.reason }}{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% endif %}
+    <div class="card-footer btn-group">
+      <a class="btn btn-primary" href="/monate/{{ ym }}/bericht">{{ icon("file", 18) }} Bericht ansehen</a>
+      <a class="btn btn-secondary" href="/monate/{{ ym }}/bericht?download=1">Bericht herunterladen</a>
+      <button type="button" class="btn btn-ghost" data-copy="{{ a.hash }}">Hash kopieren</button>
+    </div>
+  </section>
+  {% endif %}
+
+  <section aria-labelledby="figures-title">
+    <h2 class="section-title" id="figures-title">Kennzahlen{% if ov.zukunft %} (Monat beginnt noch){% endif %}</h2>
+    <div class="kpi-grid">
+      <div class="kpi kpi-lg {% if ov.saldo > 0 %}is-positive{% elif ov.saldo < 0 %}is-negative{% endif %}">
+        <span class="kpi-label">Saldo Monat</span>
+        <span class="kpi-value">{{ ov.saldo|hm(plus=True) }}</span>
+        <span class="kpi-sub">Ist {{ ov.ist|hm }} · Soll {{ ov.soll|hm }}{% if ov.laufend %} (bis {{ ov.stichtag|date_short }}, Monat gesamt {{ ov.soll_monat_gesamt|hm }}){% endif %}</span>
+      </div>
+      <div class="kpi {% if ov.saldo_kumuliert > 0 %}is-positive{% elif ov.saldo_kumuliert < 0 %}is-negative{% endif %}">
+        <span class="kpi-label">Saldo kumuliert</span>
+        <span class="kpi-value">{{ ov.saldo_kumuliert|hm(plus=True) }}</span>
+        <span class="kpi-sub">seit Schuljahresbeginn</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">EU-Mittel</span>
+        <span class="kpi-value"><span class="ampel ampel-{{ ov.eu.ampel.value }}" aria-hidden="true"></span> {{ eu_hours }} <small>h/Wo</small></span>
+        <span class="kpi-sub">12 Monate · {{ ampel_labels.get(ov.eu.ampel.value, "") }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Ferienarbeit</span>
+        <span class="kpi-value">{{ ov.ferienarbeit|hm }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Wochenende/Feiertag</span>
+        <span class="kpi-value">{{ ov.wochenend_feiertag_arbeit|hm }}</span>
+      </div>
+      {% if ov.krank_gutschrift %}
+      <div class="kpi">
+        <span class="kpi-label">Krank (neutral)</span>
+        <span class="kpi-value">{{ ov.krank_gutschrift|hm }}</span>
+        <span class="kpi-sub">als Ist gutgeschrieben</span>
+      </div>
+      {% endif %}
+      <div class="kpi">
+        <span class="kpi-label">Einträge</span>
+        <span class="kpi-value">{{ ov.entries_count }}</span>
+        <span class="kpi-sub"><a href="/eintraege?von={{ ov.start.isoformat() }}&amp;bis={{ ov.end.isoformat() }}">anzeigen</a></span>
+      </div>
+    </div>
+  </section>
+
+  {% if not ov.is_closed %}
+  <section class="card" aria-labelledby="open-title" id="offene-punkte">
+    <h2 class="card-title" id="open-title">Vor dem Abschluss prüfen</h2>
+    {% if not items %}
+    <p class="months-check-ok">{{ icon("check", 18) }} Keine offenen Punkte – der Monat kann abgeschlossen werden.</p>
+    {% else %}
+    <ul class="list months-items">
+      {% for row in items[:items_visible] %}{% include "partials/months_open_item.html" %}{% endfor %}
+    </ul>
+    {% if items|length > items_visible %}
+    <details class="months-more">
+      <summary>{{ items|length - items_visible }} weitere offene Punkte</summary>
+      <ul class="list months-items">
+        {% for row in items[items_visible:] %}{% include "partials/months_open_item.html" %}{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% endif %}
+
+    <div class="card-footer stack-sm">
+      {% if ov.zukunft %}
+      <p class="text-muted text-small">Dieser Monat liegt in der Zukunft.</p>
+      {% elif not ov.can_force %}
+      <button type="button" class="btn btn-primary btn-block" disabled>Monat abschließen</button>
+      <p class="field-hint">Abschließen ist erst möglich, wenn der Monat vorbei ist und kein Timer mehr läuft.</p>
+      {% else %}
+      <a class="btn btn-primary btn-block" href="/monate/{{ ym }}/abschliessen" data-dialog-open="close-dialog">
+        {{ icon("check", 18) }} Monat abschließen …</a>
+      {% if not ov.can_close %}
+      <p class="field-hint">Es gibt offene Punkte. Bitte zuerst prüfen – oder mit Begründung trotzdem abschließen.</p>
+      {% endif %}
+      {% endif %}
+      <a class="btn btn-ghost btn-block" href="/monate/{{ ym }}/bericht">{{ icon("file", 18) }} Vorläufigen Bericht ansehen</a>
+    </div>
+  </section>
+
+  {% if ov.can_force %}
+  <dialog class="months-dialog" id="close-dialog" aria-labelledby="close-dialog-title">
+    {% include "partials/months_close_form.html" %}
+  </dialog>
+  {% endif %}
+  {% endif %}
+
+  {% include "partials/months_mehrarbeit.html" %}
+
+  {% if ov.categories %}
+  <section aria-labelledby="cat-title">
+    <h2 class="section-title" id="cat-title">Kategorien</h2>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Kategorie</th><th scope="col" class="num">Stunden</th><th scope="col" class="num">Anteil</th></tr></thead>
+        <tbody>
+          {% for c in ov.categories %}
+          <tr>
+            <td><span class="swatch" style="--c: {{ c.color }}"></span> <strong>{{ c.code }}</strong> {{ c.name }}</td>
+            <td class="num">{{ c.seconds|hm }}</td>
+            <td class="num">{{ "%.0f"|format(c.share * 100) }} %</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ov.weeks %}
+  <section aria-labelledby="weeks-title">
+    <h2 class="section-title" id="weeks-title">Wochen</h2>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">KW</th><th scope="col">ab</th><th scope="col" class="num">Soll</th><th scope="col" class="num">Ist</th><th scope="col" class="num">Δ</th></tr></thead>
+        <tbody>
+          {% for w in ov.weeks %}
+          {% set d = w.ist - w.soll %}
+          <tr>
+            <td>{{ w.iso_week }}</td>
+            <td>{{ w.monday|date_short }}</td>
+            <td class="num">{{ w.soll|hm }}</td>
+            <td class="num">{{ w.ist|hm }}</td>
+            <td class="num {% if d > 0 %}is-positive{% elif d < 0 %}is-negative{% endif %}">{{ d|hm(plus=True) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

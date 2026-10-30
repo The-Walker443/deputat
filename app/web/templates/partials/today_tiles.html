@@ -1,0 +1,57 @@
+{% from "partials/icons.html" import icon %}
+{# Tiles "Heute" (Konzept §8.1). data-live-base: value without the running timer; timer.js adds it live. #}
+{% if kpis.has_period == false %}
+<a class="card today-hint" href="/kalender" data-no-period>
+  <span class="menu-icon">{{ icon("calendar", 22) }}</span>
+  <span class="grow">
+    <span class="text-strong">Noch kein Schuljahr angelegt → Kalender</span>
+    <span class="text-small text-muted today-hint-sub">Ohne Schuljahr gibt es kein Soll, keinen Saldo und keine Ferien.</span>
+  </span>
+  {{ icon("chevron-right", 18, "icon menu-chevron") }}
+</a>
+{% endif %}
+{% if kpis.error %}
+<div class="banner banner-warn mb-3">{{ icon("alert", 18) }}<span class="banner-body">{{ kpis.error }}</span></div>
+{% endif %}
+<div class="kpi-grid today-tiles" data-tiles>
+  <div class="kpi">
+    <span class="kpi-label">Ist heute</span>
+    <span class="kpi-value num" data-live-base="{{ kpis.ist_heute_base }}">{{ kpis.ist_heute|hm }}</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Soll heute</span>
+    <span class="kpi-value num">{{ kpis.soll_heute|hm if kpis.soll_heute is not none else "–" }}</span>
+  </div>
+  {% set saldo_cls = "" %}
+  {% if kpis.saldo is not none and kpis.saldo > 0 %}{% set saldo_cls = " is-positive" %}{% elif kpis.saldo is not none and kpis.saldo < 0 %}{% set saldo_cls = " is-negative" %}{% endif %}
+  <a class="kpi kpi-link{{ saldo_cls }}" href="/konto">
+    <span class="kpi-label">Saldo gesamt</span>
+    <span class="kpi-value num">{{ kpis.saldo|hm(plus=True) if kpis.saldo is not none else "–" }}</span>
+    {% if kpis.period_label %}<span class="kpi-sub">Schuljahr {{ kpis.period_label }}</span>{% endif %}
+  </a>
+  <a class="kpi kpi-link" href="/woche">
+    <span class="kpi-label">Woche Ist / Soll</span>
+    <span class="kpi-value num"><span data-live-base="{{ kpis.week_ist_base }}">{{ kpis.week_ist|hm }}</span>
+      <small>/ {{ kpis.week_soll|hm if kpis.week_soll is not none else "–" }}</small></span>
+    {% if kpis.week_soll %}
+    {% set pct = (100 * kpis.week_ist / kpis.week_soll)|round|int %}
+    <span class="progress{% if pct > 100 %} is-over{% endif %} mt-2" role="presentation"><span style="width: {{ [pct, 100]|min }}%"></span></span>
+    {% endif %}
+  </a>
+  <a class="kpi kpi-lg kpi-link today-ferien" href="/konto">
+    <span class="kpi-label">Nächste Ferien · Abbau-Kapazität</span>
+    {% if kpis.next_ferien %}
+    {% set f = kpis.next_ferien %}
+    <span class="row-between">
+      <span class="text-strong truncate">{{ f.name }}</span>
+      <span class="kpi-value num">{{ f.abbau|hm }}</span>
+    </span>
+    <span class="kpi-sub">
+      {% if f.laeuft %}läuft bis {{ f.end|date_short }}{% else %}{{ f.start|date_short }}–{{ f.end|date_short }}{% endif %}
+      · Saldo danach {{ f.saldo_nach|hm(plus=True) }}
+    </span>
+    {% else %}
+    <span class="kpi-value num">–</span>
+    {% endif %}
+  </a>
+</div>

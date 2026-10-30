@@ -1,0 +1,59 @@
+{% from "partials/icons.html" import icon %}
+{# Konto tiles (Konzept §9.1). Rendered with "tiles" from app.web.account.tiles(). #}
+{% if not tiles %}
+<div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ res.message or "Kennzahlen sind gerade nicht verfügbar." }}</span></div>
+{% else %}
+{% set t = tiles %}
+<div class="kpi-grid acct-tiles" data-tiles>
+  <div class="kpi kpi-lg{% if t.saldo > 0 %} is-positive{% elif t.saldo < 0 %} is-negative{% endif %}" data-tile="saldo">
+    <span class="kpi-label">Saldo heute</span>
+    <span class="kpi-value num">{{ t.saldo|hm(plus=True) }} <small>h</small></span>
+    <span class="kpi-sub">≈ {{ t.saldo_tage_text }} Arbeitstage gegenüber dem Referenz-40h-Job</span>
+    {% if t.uebertrag is not none %}
+    <span class="kpi-sub" data-uebertrag>Übertrag aus {{ t.uebertrag_label }}: {{ t.uebertrag|hm(plus=True) }} h
+      {%- if t.uebertrag_verrechnet %} (eingerechnet){% else %} (nur ausgewiesen, nicht eingerechnet){% endif %}</span>
+    {% endif %}
+    {% if t.erfassung_ab %}
+    <span class="kpi-sub">Erfassung ab {{ t.erfassung_ab|date_de }} – frühere Tage zählen neutral</span>
+    {% endif %}
+  </div>
+  <div class="kpi{% if t.prognose > 0 %} is-positive{% elif t.prognose < 0 %} is-negative{% endif %}" data-tile="prognose">
+    <span class="kpi-label">Prognose Periodenende</span>
+    <span class="kpi-value num">{{ t.prognose|hm(plus=True) }}</span>
+    <span class="kpi-sub">am {{ t.period_end|date_de }}</span>
+  </div>
+  <div class="kpi" data-tile="jsoll">
+    <span class="kpi-label">J<sub>soll</sub></span>
+    <span class="kpi-value num">{{ t.j_soll|hm }}</span>
+    <span class="kpi-sub">Soll der ganzen Periode</span>
+  </div>
+  <div class="kpi" data-tile="ist">
+    <span class="kpi-label">Ist bisher</span>
+    <span class="kpi-value num">{{ t.ist_bisher|hm }}</span>
+    <span class="kpi-sub">Soll bisher {{ t.soll_bisher|hm }}</span>
+  </div>
+  <div class="kpi" data-tile="ferienarbeit">
+    <span class="kpi-label">Ferienarbeit bisher</span>
+    <span class="kpi-value num">{{ t.ferienarbeit_bisher|hm }}</span>
+    <span class="kpi-sub">geplant {{ t.ferienarbeit_geplant|hm }}</span>
+  </div>
+  <a class="kpi kpi-link" href="/woche" data-tile="wmax">
+    <span class="kpi-label">Woche Ist / W<sub>max</sub></span>
+    <span class="kpi-value num">{{ t.week_ist|hm if t.week_ist is not none else "–" }} <small>/ {{ t.w_max|hm }}</small></span>
+    {% if t.week_pct is not none %}
+    <span class="progress{% if t.week_pct > 100 %} is-over{% endif %} mt-2" role="presentation"><span style="width: {{ [t.week_pct, 100]|min }}%"></span></span>
+    {% endif %}
+    <span class="kpi-sub">zulässig je Schulwoche{% if t.week_ist is not none and not t.week_schulwoche %} · keine Schulwoche{% endif %}</span>
+  </a>
+  <div class="kpi" data-tile="eu">
+    <span class="kpi-label">EU-12-Monats-Mittel</span>
+    <span class="kpi-value num acct-eu"><span class="ampel ampel-{{ t.eu_ampel }}" role="img" aria-label="Ampel {{ t.eu_ampel_label }}"></span>{{ t.eu_hours_text }} <small>h/Woche</small></span>
+    <span class="kpi-sub">Grenze 48 h · Ampel {{ t.eu_ampel_label }} · seit {{ t.eu_since|date_de }}{% if t.eu_since_datenbeginn %} (Datenbeginn){% endif %}</span>
+  </div>
+  <div class="kpi{% if t.schulwochen_ueber_48 %} acct-warn{% endif %}" data-tile="ueber48">
+    <span class="kpi-label">Schulwochen &gt; 48 h</span>
+    <span class="kpi-value num">{{ t.schulwochen_ueber_48 }}</span>
+    <span class="kpi-sub"><a href="/jahr">Verteilung im Jahr</a></span>
+  </div>
+</div>
+{% endif %}

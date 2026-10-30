@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Saved letter (Konzept §11): print-friendly view (browser print = PDF), download .md, mark as sent.
+   Owner: app/web/documents.py #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/documents.css') }}">
+  <script src="{{ static_url('js/documents.js') }}" defer></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/schreiben">{{ icon("chevron-left", 16) }} Übersicht</a>
+{% endblock %}
+
+{% block body_class %}page-letter{% endblock %}
+
+{% block content %}
+<div class="documents documents-detail stack">
+  <div class="card stack-sm no-print">
+    <div class="row-between documents-head">
+      <div class="grow">
+        <p class="text-strong">{{ doc.type_label }}</p>
+        <p class="text-small text-muted">
+          erstellt {{ doc.created_at|datetime_de }}
+          {%- if doc.period_from and doc.period_to %} · Zeitraum {{ doc.period_from|date_de }} – {{ doc.period_to|date_de }}{% endif %}
+        </p>
+        {% if doc.note %}<p class="text-small text-muted">Notiz: {{ doc.note }}</p>{% endif %}
+      </div>
+      {% if doc.sent_on %}<span class="badge badge-success">versendet {{ doc.sent_on|date_de }}</span>
+      {% else %}<span class="badge badge-outline">Entwurf</span>{% endif %}
+    </div>
+
+    {% if wirksam_ab %}
+    <p class="banner banner-success" role="status">
+      {{ icon("check", 18) }}<span class="banner-body">Geltendmachung wirksam ab <strong>{{ wirksam_ab|date_de }}</strong>.</span>
+    </p>
+    {% endif %}
+
+    <div class="btn-group documents-actions">
+      <button type="button" class="btn btn-primary" data-print hidden>{{ icon("file", 18) }} Drucken / PDF</button>
+      <a class="btn btn-secondary" href="/schreiben/{{ doc.id }}/download" download>Download .md</a>
+      <a class="btn btn-ghost" href="{{ again_url }}">Neu berechnen</a>
+    </div>
+
+    {% if not doc.sent_on %}
+    <form method="post" action="/schreiben/{{ doc.id }}/versendet" class="documents-sent">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <div class="field">
+        <label for="f-versendet">Versendet am</label>
+        <input id="f-versendet" type="date" name="versendet_am" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}">
+      </div>
+      <button type="submit" class="btn btn-secondary">Als versendet markieren</button>
+    </form>
+    <p class="field-hint">Erst nach dem tatsächlichen Versand markieren. Bei einer Geltendmachung zeigt das Konto
+      ab dem Folgemonat „Geltendmachung wirksam ab …“.</p>
+    {% endif %}
+  </div>
+
+  <article class="card letter" aria-label="{{ doc.type_label }}">{{ html }}</article>
+</div>
+{% endblock %}

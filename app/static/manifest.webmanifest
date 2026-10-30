@@ -1,0 +1,70 @@
+{
+  "name": "Deputat – Arbeitszeitkonto",
+  "short_name": "Deputat",
+  "description": "Arbeitszeitkonto für Lehrkräfte: Zeiterfassung, Soll/Ist, Saldo.",
+  "lang": "de",
+  "dir": "ltr",
+  "id": "/",
+  "start_url": "/heute",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f6f8",
+  "theme_color": "#2453c9",
+  "categories": [
+    "productivity",
+    "education"
+  ],
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Timer starten",
+      "short_name": "Timer",
+      "url": "/heute?aktion=start",
+      "icons": [
+        {
+          "src": "/static/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ],
+      "description": "Kategorie wählen und Zeiterfassung starten"
+    },
+    {
+      "name": "Konto",
+      "url": "/konto",
+      "icons": [
+        {
+          "src": "/static/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

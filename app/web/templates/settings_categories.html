@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/settings_fields.html" as sf %}
+{# Category catalogue (Konzept §5): rename, color, active, order, subcategories; codes are fixed. #}
+{% block head_scripts %}{{ sf.head_assets() }}{% endblock %}
+
+{% macro edit_form(request, c, is_sub=False) %}
+<form method="post" action="/einstellungen/kategorien/{{ c.id }}" class="stack-sm cat-edit">
+  {{ sf.csrf(request) }}
+  <div class="row">
+    <div class="field grow">
+      <label for="cn-{{ c.id }}">Name</label>
+      <input id="cn-{{ c.id }}" name="name" value="{{ c.name }}" required maxlength="100">
+    </div>
+    <div class="field">
+      <label for="cc-{{ c.id }}">Farbe</label>
+      <input id="cc-{{ c.id }}" name="color" type="color" value="{{ c.color|lower }}">
+    </div>
+  </div>
+  <label class="admin-check-row"><input type="checkbox" name="active" value="1"{% if c.active %} checked{% endif %}>
+    <span class="admin-check-text"><span class="admin-check-label">aktiv</span>
+      <span class="field-hint">Inaktive Kategorien verschwinden aus der Auswahl, bleiben aber in bestehenden Einträgen und Berichten.</span></span></label>
+  {% if not c.is_pseudo %}
+  <label class="admin-check-row"><input type="checkbox" name="requires_note" value="1"{% if c.requires_note %} checked{% endif %}>
+    <span class="admin-check-text"><span class="admin-check-label">Notiz Pflicht</span></span></label>
+  {% endif %}
+  <div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
+</form>
+{% endmacro %}
+
+{% macro move_buttons(request, c, first, last) %}
+<div class="cat-move">
+  <form method="post" action="/einstellungen/kategorien/{{ c.id }}/verschieben">
+    {{ sf.csrf(request) }}
+    <button type="submit" name="richtung" value="up" class="btn btn-ghost btn-icon btn-sm" aria-label="„{{ c.name }}“ nach oben"{% if first %} disabled{% endif %}>↑</button>
+  </form>
+  <form method="post" action="/einstellungen/kategorien/{{ c.id }}/verschieben">
+    {{ sf.csrf(request) }}
+    <button type="submit" name="richtung" value="down" class="btn btn-ghost btn-icon btn-sm" aria-label="„{{ c.name }}“ nach unten"{% if last %} disabled{% endif %}>↓</button>
+  </form>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="stack admin">
+  <p><a href="/einstellungen#kategorien" class="text-small admin-back">← zurück zu den Einstellungen</a></p>
+  <p class="admin-help">Die Kategorien folgen den Göttinger Arbeitszeitstudien. Namen, Farben, Reihenfolge und
+    Unterkategorien kannst du anpassen. Die Kürzel (Codes) bleiben fest, damit Exporte und Vergleichswerte stimmen.
+    Gelöscht wird nichts – nicht mehr benötigte Kategorien bitte deaktivieren.</p>
+
+  <section class="card card-flush" aria-label="Hauptkategorien">
+    <ul class="cat-list">
+      {% for n in tree %}
+      {% set c = n.category %}
+      <li class="cat-item{% if not c.active %} is-inactive{% endif %}" id="kat-{{ c.id }}">
+        <div class="cat-head">
+          <span class="cat-dot" style="--c: {{ c.color }}"></span>
+          <span class="cat-name">{{ c.name }}</span>
+          <span class="admin-code" title="fester Code">{{ c.code }}</span>
+          {{ move_buttons(request, c, loop.first, loop.last) }}
+        </div>
+        <details class="admin-details cat-body-wrap"{% if open_id == c.id|string %} open{% endif %}>
+          <summary class="cat-summary text-small">
+            Bearbeiten · {{ n.children|length }} Unterkategorie{{ "n" if n.children|length != 1 }}{% if n.usage %} · {{ n.usage }} Einträge{% endif %}{% if not c.active %} · inaktiv{% endif %}
+          </summary>
+          <div class="cat-body">
+            {{ edit_form(request, c) }}
+            <h3 class="admin-section-title">Unterkategorien</h3>
+            {% if n.children %}
+            <ul class="cat-subs">
+              {% for s in n.children %}
+              <li class="cat-sub{% if not s.active %} is-inactive{% endif %}">
+                <details class="admin-details">
+                  <summary>
+                    <span class="cat-dot" style="--c: {{ s.color }}"></span>
+                    <span class="cat-name">{{ s.name }}</span>
+                    <span class="admin-code">{{ s.code }}</span>
+                  </summary>
+                  <div class="cat-edit stack-sm">
+                    {{ edit_form(request, s, True) }}
+                    <div class="row-between">
+                      <span class="text-xs text-muted">{{ n.child_usage.get(s.id, 0) }} Einträge</span>
+                      {{ move_buttons(request, s, loop.first, loop.last) }}
+                    </div>
+                  </div>
+                </details>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-small text-muted">Keine Unterkategorien.</p>
+            {% endif %}
+            <form method="post" action="/einstellungen/kategorien/{{ c.id }}/unterkategorie" class="admin-inline-form">
+              {{ sf.csrf(request) }}
+              <div class="field grow">
+                <label for="ns-{{ c.id }}">Neue Unterkategorie</label>
+                <input id="ns-{{ c.id }}" name="name" required maxlength="100" placeholder="z. B. Theater-AG">
+              </div>
+              <button type="submit" class="btn btn-secondary">{{ icon("plus", 18) }} Hinzufügen</button>
+            </form>
+          </div>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if pseudo %}
+  <section class="card" aria-labelledby="pseudo-title">
+    <h2 class="card-title" id="pseudo-title">Sonderkategorie</h2>
+    {% for n in pseudo %}
+    {% set c = n.category %}
+    <div class="stack-sm" id="kat-{{ c.id }}">
+      <p class="admin-help"><span class="admin-code">{{ c.code }}</span> „{{ c.name }}“ erfasst einen teilweisen Krankheitstag.
+        Die Zeit neutralisiert nur das Soll und erscheint nicht in den Kategorie-Statistiken.</p>
+      {{ edit_form(request, c) }}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,107 @@
+{# Filter form + results; swapped as a whole by the filter form (hx-target="#entries-root"). #}
+{% from "partials/icons.html" import icon %}
+{% set list_url = "/eintraege?" ~ filters.query() %}
+<div id="entries-root" class="entries-root stack">
+  <form class="entries-filter card" method="get" action="/eintraege"
+        hx-get="/eintraege" hx-trigger="change, submit" hx-target="#entries-root" hx-swap="outerHTML"
+        hx-push-url="true" aria-label="Einträge filtern">
+    <div class="entries-period">
+      {% if filters.is_full_month %}
+      <a class="btn btn-ghost btn-icon btn-sm" href="/eintraege?{{ filters.month_shift(-1) }}"
+         hx-get="/eintraege?{{ filters.month_shift(-1) }}" hx-target="#entries-root" hx-swap="outerHTML"
+         hx-push-url="true" aria-label="Vorheriger Monat">{{ icon("chevron-left", 18) }}</a>
+      <span class="entries-period-label">{{ filters.von|month_de }}</span>
+      <a class="btn btn-ghost btn-icon btn-sm" href="/eintraege?{{ filters.month_shift(1) }}"
+         hx-get="/eintraege?{{ filters.month_shift(1) }}" hx-target="#entries-root" hx-swap="outerHTML"
+         hx-push-url="true" aria-label="Nächster Monat">{{ icon("chevron-right", 18) }}</a>
+      {% else %}
+      <span class="entries-period-label">{{ filters.von|date_de }} – {{ filters.bis|date_de }}</span>
+      <a class="btn btn-ghost btn-sm" href="/eintraege" hx-get="/eintraege" hx-target="#entries-root"
+         hx-swap="outerHTML" hx-push-url="true">Aktueller Monat</a>
+      {% endif %}
+    </div>
+
+    <details class="entries-filter-more"{% if filters.active_count or not filters.is_full_month %} open{% endif %}>
+      <summary>
+        Filter{% if filters.active_count %} <span class="badge badge-primary">{{ filters.active_count }} aktiv</span>{% endif %}
+      </summary>
+      <div class="stack mt-3">
+        <div class="form-row">
+          <div class="field">
+            <label for="flt-von">Von</label>
+            <input type="date" id="flt-von" name="von" value="{{ filters.von.isoformat() }}">
+          </div>
+          <div class="field">
+            <label for="flt-bis">Bis</label>
+            <input type="date" id="flt-bis" name="bis" value="{{ filters.bis.isoformat() }}">
+          </div>
+        </div>
+        <div class="field">
+          <label for="flt-kategorie">Kategorie</label>
+          <select id="flt-kategorie" name="kategorie">
+            <option value="">Alle Kategorien</option>
+            {% for c in tree.mains %}
+            <optgroup label="{{ c.code }} – {{ c.name }}">
+              <option value="{{ c.id }}"{% if filters.kategorie == c.id %} selected{% endif %}>{{ c.code }} – alle</option>
+              {% for s in tree.children.get(c.id, []) %}
+              <option value="{{ s.id }}"{% if filters.kategorie == s.id %} selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="flt-quelle">Quelle</label>
+            <select id="flt-quelle" name="quelle">
+              <option value="">Alle</option>
+              {% for key, label in source_labels.items() %}
+              <option value="{{ key }}"{% if filters.quelle == key %} selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="flt-kennzeichen">Kennzeichen</label>
+            <select id="flt-kennzeichen" name="kennzeichen">
+              <option value="">Alle</option>
+              {% for key, label in filter_flags %}
+              <option value="{{ key }}"{% if filters.kennzeichen == key %} selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label class="check">
+          <input type="checkbox" name="geloescht" value="1"{% if filters.geloescht %} checked{% endif %}>
+          Gelöschte und verworfene Einträge anzeigen
+        </label>
+        <div class="form-actions">
+          <a class="btn btn-ghost" href="/eintraege" hx-get="/eintraege" hx-target="#entries-root"
+             hx-swap="outerHTML" hx-push-url="true">Zurücksetzen</a>
+          <button type="submit" class="btn btn-secondary">Anwenden</button>
+        </div>
+      </div>
+    </details>
+  </form>
+
+  <div class="entries-summary" aria-live="polite">
+    <span><strong class="num">{{ entry_count }}</strong> {{ "Eintrag" if entry_count == 1 else "Einträge" }}</span>
+    <span class="text-faint">·</span>
+    <span><strong class="num">{{ day_count }}</strong> {{ "Tag" if day_count == 1 else "Tage" }}</span>
+    <span class="text-faint">·</span>
+    <span>Summe <strong class="num">{{ total_seconds|hm }}</strong> h</span>
+    {% if deleted_count %}<span class="badge badge-danger">{{ deleted_count }} gelöscht</span>{% endif %}
+  </div>
+
+  {% if groups %}
+  <div class="entries-days" data-list-url="{{ list_url }}">
+    {% include "partials/entries_page.html" %}
+  </div>
+  {% else %}
+  <section class="card empty-state">
+    {{ icon("list", 40) }}
+    <h2 class="h3">Keine Einträge</h2>
+    <p>Für diesen Zeitraum und diese Filter gibt es keine Einträge.</p>
+    <a class="btn btn-primary" href="/eintraege/neu?{{ {'next': list_url}|urlencode }}">{{ icon("plus", 18) }} Eintrag anlegen</a>
+  </section>
+  {% endif %}
+</div>

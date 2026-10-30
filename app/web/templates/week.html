@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Woche" (Konzept §9.2). Rendered by app/web/week.py. Swipe / arrow keys navigate via
+   static/js/week.js (data-prev / data-next). Blocks are positioned with inline percentages. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/account.css') }}">
+  <script src="{{ static_url('js/week.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% if state == "no_period" %}
+  {% include "partials/account_no_period.html" %}
+{% elif state == "error" %}
+<div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ message }}</span></div>
+{% else %}
+{% set w = week %}
+<div class="wk stack-lg" data-week data-prev="/woche/{{ prev_ref }}" data-next="/woche/{{ next_ref }}">
+  <nav class="wk-nav" aria-label="Wochennavigation">
+    <a class="btn btn-ghost btn-icon" href="/woche/{{ prev_ref }}" rel="prev" aria-label="Vorherige Woche" data-week-prev>{{ icon("chevron-left", 22) }}</a>
+    <div class="wk-nav-title">
+      <span class="text-strong">KW {{ w.kw }}</span>
+      <span class="text-small text-muted">{{ w.monday|date_short }}–{{ w.sunday|date_de }}</span>
+    </div>
+    <a class="btn btn-ghost btn-icon" href="/woche/{{ next_ref }}" rel="next" aria-label="Nächste Woche" data-week-next>{{ icon("chevron-right", 22) }}</a>
+  </nav>
+  {% if not is_current %}
+  <p class="wk-today-link"><a class="btn btn-soft btn-sm" href="/woche">{{ icon("week", 16) }}<span>Zur aktuellen Woche</span></a></p>
+  {% endif %}
+
+  {% if message %}
+  <div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ message }}</span></div>
+  {% endif %}
+  {% if outside %}
+  <div class="banner banner-info" data-outside>{{ icon("info", 18) }}<span class="banner-body">Diese Woche liegt in keinem angelegten
+    Schuljahr – angezeigt wird nur die erfasste Zeit, ohne Soll. <a href="/kalender">Kalender</a></span></div>
+  {% elif w.partial %}
+  <p class="text-small text-muted">Die Woche liegt am Rand des Schuljahrs {{ period.label }}; Soll nur für die Tage im Schuljahr.</p>
+  {% endif %}
+
+  {# ---------------------------------------------------------------- summary #}
+  <section class="card wk-summary" aria-labelledby="wk-sum-title" data-week-summary>
+    <h2 class="visually-hidden" id="wk-sum-title">Wochensumme</h2>
+    <div class="kpi-grid kpi-grid-3 wk-kpis">
+      <div class="wk-kpi">
+        <span class="kpi-label">Ist</span>
+        <span class="kpi-value num" data-week-ist>{{ w.ist|hm }}</span>
+      </div>
+      <div class="wk-kpi">
+        <span class="kpi-label">Soll</span>
+        <span class="kpi-value num">{{ w.soll|hm if w.soll is not none else "–" }}</span>
+      </div>
+      <div class="wk-kpi">
+        <span class="kpi-label">W<sub>max</sub></span>
+        <span class="kpi-value num">{{ w.w_max|hm if (w.w_max and w.is_schulwoche) else "–" }}</span>
+      </div>
+    </div>
+    <p class="text-small mt-2 wk-delta">
+      {% if w.delta is not none %}
+      Differenz zum Soll{% if w.delta_partial %} bis heute{% endif %}:
+      <span class="text-strong num{% if w.delta > 0 %} is-positive{% elif w.delta < 0 %} is-negative{% endif %}">{{ w.delta|hm(plus=True) }} h</span>
+      {% endif %}
+      {% if w.is_schulwoche %}
+        {% if w.delta is not none %}· {% endif %}Schulwoche ({{ w.schultage }} Schultag{{ "e" if w.schultage != 1 }})
+        {% if w.w_max %}
+          · {% if w.ist_erfasst > w.w_max %}<span class="text-warn text-strong">{{ (w.ist_erfasst - w.w_max)|hm }} h über W<sub>max</sub></span>
+          {% else %}noch {{ (w.w_max - w.ist_erfasst)|hm }} h bis W<sub>max</sub>{% endif %}
+          {%- if w.krank_gutschrift %} (W<sub>max</sub> zählt nur erfasste Zeit, ohne Krank-Gutschrift){% endif %}
+        {% endif %}
+      {% elif w.soll is not none %}
+        {% if w.delta is not none %}· {% endif %}keine Schulwoche (W<sub>max</sub> gilt nur für Schulwochen)
+      {% endif %}
+    </p>
+    {% if w.krank_gutschrift %}
+    <p class="text-xs text-muted">Enthält {{ w.krank_gutschrift|hm }} h Krank-Gutschrift (erfasst {{ w.ist_erfasst|hm }} h).</p>
+    {% endif %}
+
+    {% set m = w.meter %}
+    <div class="wk-meter{% if m.over %} is-over-{{ m.over }}{% endif %}" style="--bench-rows: {{ m.bench_rows }}" role="img"
+         aria-label="Erfasste Wochenzeit {{ w.ist_erfasst|hm }} Stunden{% if w.soll %}, Soll {{ w.soll|hm }}{% endif %}{% if w.w_max and w.is_schulwoche %}, W_max {{ w.w_max|hm }}{% endif %}, EU-Grenze 48 Stunden">
+      <div class="wk-meter-track"><span class="wk-meter-bar" style="width: {{ m.ist_pos }}%"></span></div>
+      {% for t in m.ticks %}
+      <span class="wk-tick wk-tick-{{ t.kind }}" style="left: {{ t.pos }}%" title="{{ t.title }}"><span>{{ t.label }}</span></span>
+      {% endfor %}
+      {% for b in m.benchmarks %}
+      <span class="wk-tick wk-tick-bench wk-bench" style="left: {{ b.pos }}%; --row: {{ b.row }}" title="{{ b.label }} – {{ b.hours_text }} h/Woche ({{ b.source }} {{ b.year }}) · {{ m.benchmark_label }}"><span>{{ b.hours_text }}</span></span>
+      {% endfor %}
+    </div>
+    {% if m.benchmarks %}
+    <label class="check wk-bm-label mt-3">
+      <input type="checkbox" class="wk-bm-toggle" data-benchmark-toggle>
+      <span class="text-small">Studienwerte einblenden <span class="text-muted">({{ m.benchmark_label }})</span></span>
+    </label>
+    <ul class="wk-bm-list text-xs text-muted">
+      {% for b in m.benchmarks %}
+      <li>{{ b.label }}: {{ b.hours_text }} h/Woche · {{ b.source }}{% if b.year %} {{ b.year }}{% endif %}{% if b.kind %} · {{ b.kind }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {# ---------------------------------------------------------------- grid #}
+  <section class="card wk-grid-card" aria-labelledby="wk-grid-title">
+    <div class="row-between mb-2">
+      <h2 class="card-title" id="wk-grid-title">Wochenraster</h2>
+      <span class="text-xs text-muted">{{ w.hour_lo }}–{{ w.hour_hi }} Uhr</span>
+    </div>
+    <div class="wk-grid" style="--wk-hours: {{ w.hours|length }}" data-week-grid>
+      <div class="wk-corner" aria-hidden="true"></div>
+      {% for c in w.cols %}
+      <a class="wk-head wk-kind-{{ c.kind }}{% if c.absence %} wk-abs-{{ c.absence }}{% endif %}{% if c.is_today %} is-today{% endif %}"
+         href="#{{ c.anchor }}" title="{{ c.weekday_long }}, {{ c.date|date_de }} · {{ c.label }}"{% if c.is_today %} aria-current="date"{% endif %}>
+        <span class="wk-head-wd">{{ c.weekday }}</span>
+        <span class="wk-head-day">{{ c.date.day }}</span>
+      </a>
+      {% endfor %}
+
+      <div class="wk-axis" aria-hidden="true">
+        {% for h in w.hours %}<span>{{ h }}</span>{% endfor %}
+      </div>
+      {% for c in w.cols %}
+      <div class="wk-col wk-kind-{{ c.kind }}{% if c.absence %} wk-abs-{{ c.absence }}{% endif %}{% if c.is_today %} is-today{% endif %}" data-day="{{ c.date.isoformat() }}">
+        {% for b in c.blocks %}
+        <a class="wk-block{% if b.running %} is-running{% endif %}{% if b.pseudo %} is-pseudo{% endif %}"
+           href="/eintraege/{{ b.id }}?next=/woche/{{ w.ref }}"
+           style="top: {{ b.top }}%; height: {{ b.height }}%; left: {{ b.left }}%; width: {{ b.width }}%; --c: {{ b.color }}"
+           title="{{ b.title }}" aria-label="{{ c.weekday_long }} {{ b.title }} – bearbeiten">
+          <span>{{ b.code }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+
+      <div class="wk-corner wk-foot-label" aria-hidden="true"><span>Ist</span><span>Soll</span></div>
+      {% for c in w.cols %}
+      <div class="wk-foot{% if c.is_today %} is-today{% endif %}">
+        <span class="num text-strong">{{ c.ist|hm if c.ist else "–" }}</span>
+        <span class="num text-muted">{{ c.soll|hm if c.soll is not none else "–" }}</span>
+        {% if c.unbounded %}<a class="wk-unbounded" href="#{{ c.anchor }}" title="{{ c.unbounded|length }} Eintrag/Einträge ohne Uhrzeit">+{{ c.unbounded|length }}</a>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if not w.has_entries %}
+    <p class="text-small text-muted mt-3">In dieser Woche ist noch nichts erfasst.</p>
+    {% endif %}
+  </section>
+
+  {# ---------------------------------------------------------------- day list #}
+  <section aria-labelledby="wk-days-title">
+    <h2 class="section-title" id="wk-days-title">Tage</h2>
+    <ol class="card card-flush wk-days">
+      {% for c in w.cols %}
+      <li class="wk-day{% if c.is_today %} is-today{% endif %}" id="{{ c.anchor }}">
+        <div class="wk-day-head">
+          <div class="wk-day-title">
+            <span class="text-strong">{{ c.weekday }} {{ c.date|date_short }}</span>
+            {% if c.is_today %}<span class="badge badge-primary">heute</span>{% endif %}
+            <span class="badge wk-badge wk-kind-{{ c.kind }}{% if c.absence %} wk-abs-{{ c.absence }}{% endif %}">{{ c.label }}</span>
+          </div>
+          <div class="wk-day-sum num">
+            <span class="text-strong">{{ c.ist|hm }}</span><span class="text-muted"> / {{ c.soll|hm if c.soll is not none else "–" }}</span>
+            {% if c.delta %}<span class="text-xs{% if c.delta > 0 %} is-positive{% else %} is-negative{% endif %}"> {{ c.delta|hm(plus=True) }}</span>{% endif %}
+          </div>
+        </div>
+        {% if c.blocks or c.unbounded %}
+        <ul class="wk-entries">
+          {% for b in c.blocks + c.unbounded %}
+          <li>
+            <a class="wk-entry{% if b.pseudo %} is-pseudo{% endif %}" href="/eintraege/{{ b.id }}?next=/woche/{{ w.ref }}">
+              <span class="swatch" style="--c: {{ b.color }}"></span>
+              <span class="wk-entry-time num text-muted">{% if not b.bounded %}ohne Uhrzeit{% else %}{{ b.start_text }}–{{ b.end_text }}{% endif %}</span>
+              <span class="wk-entry-name truncate">{{ b.name }}{% if b.note %} <span class="text-muted">· {{ b.note }}</span>{% endif %}</span>
+              <span class="wk-entry-dur num">{{ b.seconds|hm }}{% if b.running %} <span class="badge badge-danger">läuft</span>{% endif %}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        <div class="wk-day-actions">
+          <a class="wk-add text-small" href="/eintraege/neu?datum={{ c.date.isoformat() }}&amp;next=/woche/{{ w.ref }}">{{ icon("plus", 16) }}<span>Eintrag</span></a>
+          {% if c.kind == "schultag" and not c.future and not c.absence %}
+          <a class="wk-add text-small" href="/tag/{{ c.date.isoformat() }}?next=/woche/{{ w.ref }}">{{ icon("check", 16) }}<span>Stundenplan bestätigen</span></a>
+          {% endif %}
+          {% if c.in_period %}
+          <a class="wk-add text-small" href="/kalender/tag/{{ c.date.isoformat() }}">{{ icon("calendar", 16) }}<span>Abwesenheit</span></a>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {# ---------------------------------------------------------------- categories #}
+  {% if w.categories %}
+  <section class="card" aria-labelledby="wk-cat-title">
+    <h2 class="card-title" id="wk-cat-title">Kategorien der Woche</h2>
+    <div class="wk-stack" aria-hidden="true">
+      {% for k in w.categories %}<span style="width: {{ k.width }}%; --c: {{ k.color }}" title="{{ k.name }} {{ k.seconds|hm }} h"></span>{% endfor %}
+    </div>
+    <ul class="list wk-cat-list">
+      {% for k in w.categories %}
+      <li class="wk-cat{% if k.is_unterricht %} is-unterricht{% endif %}">
+        <span class="swatch" style="--c: {{ k.color }}"></span>
+        <span class="grow truncate">{{ k.name }}</span>
+        <span class="num">{{ k.seconds|hm }}</span>
+        <span class="num text-muted wk-cat-share">{{ k.share }} %</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <p class="text-xs text-muted wk-hint">Tipp: nach links/rechts wischen wechselt die Woche.</p>
+</div>
+{% endif %}
+{% endblock %}

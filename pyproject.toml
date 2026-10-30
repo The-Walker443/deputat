@@ -1,0 +1,44 @@
+[project]
+name = "deputat"
+version = "0.1.0"
+description = "Deputat – Arbeitszeitkonto für Lehrkräfte (self-hosted)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.2",
+    "apscheduler>=3.10,<4",
+    "openpyxl>=3.1",
+    "icalendar>=5.0",
+    "pyyaml>=6.0",
+    "tzdata>=2024.1",
+    "markdown>=3.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+    "httpx>=0.27",
+    "pytest-playwright>=0.10.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # pytest-playwright's base_url fallback fixture (third-party, harmless)
+    "ignore:Session-scoped fixtures defined as instance methods are deprecated",
+]
+# Browser smoke tests (tests/e2e) are deselected unless requested: `uv run pytest -m e2e`
+# (needs `uv run playwright install chromium` once; they skip cleanly without the browser).
+markers = ["e2e: Playwright browser smoke tests (run with `uv run pytest -m e2e`)"]

@@ -1,0 +1,22 @@
+{# Self-contained report document: inline CSS, no scripts, no external assets (stored files must open anywhere). #}
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Deputat {{ footer.app_version }}">
+<meta name="deputat-hash" content="{{ footer.hash }}">
+<title>{{ title }}{% if head.name %} – {{ head.name }}{% endif %}</title>
+<style>
+{{ css }}
+</style>
+</head>
+<body class="report">
+{% block content %}{% endblock %}
+<footer class="report-foot">
+  <div>Prüf-Hash (SHA-256{% if footer.preliminary %}, vorläufig{% endif %}): <span class="hash">{{ footer.hash }}</span></div>
+  <div>Deputat {{ footer.app_version }} · Rechenregeln-Version {{ footer.rules_version }} · Hash-Format v{{ footer.hash_version }} · erstellt {{ head.created }}</div>
+  <div>Der Hash wird über die kanonisch serialisierten Einträge berechnet (sortiert, UTC, feste Feldreihenfolge, inkl. gelöschter Einträge). Jede Änderung an einem Eintrag ergibt einen anderen Hash.</div>
+</footer>
+</body>
+</html>

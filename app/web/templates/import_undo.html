@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Confirmation: undo a committed import batch / discard an unfinished upload. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="import stack">
+  <p class="text-small"><a href="/import">{{ icon("chevron-left", 16) }} Import-Übersicht</a></p>
+
+  <form method="post" action="/import/{{ batch.id }}/rueckgaengig" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <h2 class="card-title">{% if committed %}Import rückgängig machen?{% else %}Upload verwerfen?{% endif %}</h2>
+    <p class="text-small text-muted">{{ info.label }}</p>
+
+    {% if error %}
+    <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+    {% endif %}
+
+    {% if committed %}
+    <p>Alle <strong>{{ info.entries_active }} Einträge</strong> dieses Imports werden gelöscht. Sie bleiben in der Historie
+      (Grund „Import rückgängig“) nachvollziehbar; die Datei kann danach erneut importiert werden.</p>
+    {% if info.entries_locked %}
+    <div class="banner banner-warn" role="note">
+      {{ icon("alert", 18) }}
+      <span class="banner-body">{{ info.entries_locked }} {{ "Eintrag liegt" if info.entries_locked == 1 else "Einträge liegen" }} in abgeschlossenen Monaten. Rückgängig ist dort nur
+        mit Begründung möglich; die Monate werden als „nachträglich korrigiert“ markiert.</span>
+    </div>
+    {% endif %}
+    {% if info.entries_locked or error %}
+    <div class="field">
+      <label for="undo-reason">Begründung{% if info.entries_locked %} (Pflicht){% endif %}</label>
+      <input type="text" id="undo-reason" name="begruendung" maxlength="500" value="{{ reason }}"{% if info.entries_locked %} required{% endif %}
+             placeholder="z. B. falsche Datei importiert">
+    </div>
+    {% endif %}
+    {% else %}
+    <p>Der Upload wurde noch nicht übernommen. Die gespeicherte Datei und alle Einstellungen dazu werden verworfen.</p>
+    {% endif %}
+
+    <label class="check">
+      <input type="checkbox" name="bestaetigt" value="1" required>
+      <span>{% if committed %}Ja, alle Einträge dieses Imports löschen.{% else %}Ja, verwerfen.{% endif %}</span>
+    </label>
+    <div class="btn-group">
+      <button type="submit" class="btn btn-danger">{% if committed %}Rückgängig machen{% else %}Verwerfen{% endif %}</button>
+      <a class="btn btn-ghost" href="/import">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+{# Reminder banners (partial for GET /hinweise). Each banner carries its key for session dismissal. #}
+{% from "partials/icons.html" import icon %}
+{% for h in hints %}
+<div class="banner banner-{{ h.level }} reminder" data-reminder="{{ h.key }}" role="status">
+  {{ icon("info" if h.level == "info" else "alert", 18) }}
+  <span class="banner-body">{{ h.text }}{% if h.link %} <a class="reminder-link" href="{{ h.link }}">{{ h.link_label or "Öffnen" }}</a>{% endif %}</span>
+  <button type="button" class="banner-close" data-reminder-close aria-label="Hinweis für diese Sitzung ausblenden">{{ icon("x", 16) }}</button>
+</div>
+{% endfor %}

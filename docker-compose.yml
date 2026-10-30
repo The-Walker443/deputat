@@ -1,0 +1,66 @@
+# Deputat – Portainer stack (Compose spec). Details: DEPLOY.md
+#
+# Stack variables (set in Portainer, values never in the repo):
+#   IMAGE_REPOSITORY       ghcr.io/the-walker443/deputat
+#   IMAGE_TAG              latest | sha-<short>  (pin a sha tag for reproducible rollouts/rollback)
+#   APP_SECRET             signing secret for the CSRF cookie, 32+ chars:
+#                            python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+#   BASE_URL               https://time.bauer.center   (absolute URLs, https hint banner on plain-http LAN access)
+#   ALLOWED_HOSTS          time.bauer.center           (Host-header check; localhost is always allowed)
+#   COOKIE_SECURE          false (default) | auto | true  (Secure flag of the CSRF cookie; keep false while the
+#                            LAN may use plain http, otherwise every form POST there fails with 403)
+#   TZ                     Europe/Berlin (default)
+#   BACKUP_CRON            "30 0 * * *" (default; before the 01:00 PBS backup)
+#   BACKUP_RETENTION_DAYS  14 (default)
+#   PROXY_TRUSTED_NETS     172.16.0.0/12 (default; X-Real-IP from these peers is used for logging only)
+#   LOG_LEVEL              info (default)
+#
+# There is no login in the app. External access must be protected by Cloudflare Access
+# BEFORE the tunnel route is enabled; the LAN is deliberately open.
+
+services:
+  deputat:
+    image: ${IMAGE_REPOSITORY:-ghcr.io/the-walker443/deputat}:${IMAGE_TAG:-latest}
+    container_name: deputat
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      APP_SECRET: ${APP_SECRET}
+      BASE_URL: ${BASE_URL:-https://time.bauer.center}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-time.bauer.center}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      BACKUP_CRON: ${BACKUP_CRON:-30 0 * * *}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      PROXY_TRUSTED_NETS: ${PROXY_TRUSTED_NETS:-172.16.0.0/12}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - deputat_data:/data
+    networks:
+      - proxy_net
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  deputat_data:
+    name: deputat_data
+
+networks:
+  proxy_net:
+    external: true

@@ -1,0 +1,14 @@
+/* Deputat – in-app reminder banners (slot in base.html, partials/reminders_*.html, js/reminders.js).
+   Banner look comes from app.css (.banner, .banner-info|warn|danger). */
+
+.reminders:not(:empty) { margin-bottom: var(--space-3); }
+.reminders .reminder[hidden] { display: none; }
+.reminder .banner-body { overflow-wrap: anywhere; }
+.reminder-link {
+  /* 44px hit area without growing the line: the negative block margins give the height back. */
+  display: inline-flex; align-items: center; min-height: 44px; margin-block: -6px; padding: 0 2px;
+  font-weight: 650; color: inherit; text-decoration: underline; text-underline-offset: 2px;
+}
+.reminder .banner-close { width: 44px; height: 44px; margin: -12px -10px -12px 0; }
+
+@media print { .reminders { display: none !important; } }

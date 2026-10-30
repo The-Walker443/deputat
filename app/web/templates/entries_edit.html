@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block head_scripts %}<script src="{{ static_url('js/entries.js') }}" defer></script>{% endblock %}
+{% block topbar_left %}
+<a class="btn btn-ghost btn-icon btn-sm" href="{{ back_url }}" aria-label="Zurück">{{ icon("chevron-left", 20) }}</a>
+<h1 class="topbar-title">{{ page_title }}</h1>
+{% endblock %}
+{% block content %}
+{% set deleted = entry.deleted_at is not none %}
+<div class="stack">
+  <section class="card entry-head">
+    <div class="row-between">
+      <div class="row grow">
+        <span class="entry-code" style="--c: {{ entry.category.color if entry.category else '#64748B' }}">{{ entry.category.code if entry.category else "?" }}</span>
+        <div class="grow">
+          <div class="text-strong">{{ entry.day|weekday_de(long=True) }}, {{ entry.day|date_de }}</div>
+          <div class="text-small text-muted">
+            {% if entry.has_bounds %}{{ entry.start_at|time_de }}–{{ entry.end_at|time_de if entry.end_at else "läuft" }}{% else %}ohne Uhrzeit{% endif %}
+            · Quelle: {{ source_label }} · angelegt {{ created_label }}
+          </div>
+        </div>
+      </div>
+      <span class="entry-head-duration num">{{ "läuft" if entry.end_at is none else entry.duration_seconds|hm }}</span>
+    </div>
+    {% if badges %}
+    <div class="entry-badges mt-2">{% for label, cls in badges %}<span class="badge {{ cls }}">{{ label }}</span>{% endfor %}</div>
+    {% endif %}
+  </section>
+
+  {% if deleted %}
+  <div class="banner banner-danger" role="status">
+    {{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Gelöscht am {{ deleted_label }}.</strong> Der Eintrag zählt nicht mehr, bleibt aber
+      mit seinem Verlauf erhalten.</span>
+  </div>
+  {% if delete_error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ delete_error }}</span></div>
+  {% endif %}
+  <form class="card stack" method="post" action="/eintraege/{{ entry.id }}/wiederherstellen">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <div class="field">
+      <label for="r-grund">Grund{% if locked %} <span class="text-danger">*</span>{% else %} (optional){% endif %}</label>
+      <input type="text" id="r-grund" name="grund" maxlength="500"{% if locked %} required{% endif %}>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-secondary">Wiederherstellen</button>
+    </div>
+  </form>
+  {% else %}
+
+  {% if locked %}
+  <div class="banner banner-warn entry-lock" role="status">
+    {{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Gesperrt – Monat abgeschlossen.</strong> Änderungen und Löschen sind nur mit
+      Begründung möglich. Der Monatsabschluss wird danach als „nachträglich korrigiert“ markiert (der alte Prüf-Hash
+      bleibt gespeichert).</span>
+  </div>
+  {% endif %}
+  {% if running %}
+  <div class="banner banner-info" role="status">
+    {{ icon("info", 18) }}<span class="banner-body">Der Timer läuft noch. Beenden auf „Heute“; hier lassen sich Kategorie
+      und Angaben ändern.</span>
+  </div>
+  {% endif %}
+
+  <form class="entry-form card stack" method="post" action="/eintraege/{{ entry.id }}" novalidate
+        data-entry-form data-closed-months='{{ closed_months|tojson }}' data-location-rule='{}'>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    {% if form.next %}<input type="hidden" name="next" value="{{ form.next }}">{% endif %}
+
+    {% if error %}
+    <div class="banner banner-danger" role="alert">
+      {{ icon("alert", 18) }}<span class="banner-body"><strong>Nicht gespeichert:</strong> {{ error }}</span>
+    </div>
+    {% endif %}
+
+    {% include "partials/entries_fields.html" %}
+
+    {% if locked or error_field == "begruendung" %}
+    <div class="field">
+      <label for="f-begruendung">Begründung <span class="text-danger">*</span></label>
+      <input type="text" id="f-begruendung" name="begruendung" value="{{ form.begruendung }}" maxlength="500" required
+             placeholder="z. B. Tippfehler bei der Endzeit"{% if error_field == "begruendung" %} aria-invalid="true" aria-describedby="err-begruendung"{% endif %}>
+      {% if error_field == "begruendung" and error %}<p class="field-error" id="err-begruendung">{{ error }}</p>{% endif %}
+      <span class="field-hint">Pflicht bei gesperrten Einträgen; wird im Verlauf gespeichert.</span>
+    </div>
+    {% else %}
+    <div class="field">
+      <label for="f-begruendung">Änderungsgrund <span class="text-muted text-xs">(optional)</span></label>
+      <input type="text" id="f-begruendung" name="begruendung" value="{{ form.begruendung }}" maxlength="500"
+             placeholder="z. B. Endzeit korrigiert">
+      <span class="field-hint">Jede Änderung wird als Version im Verlauf festgehalten.</span>
+    </div>
+    {% endif %}
+
+    <div class="form-actions entry-actions">
+      <a class="btn btn-ghost" href="{{ back_url }}">Abbrechen</a>
+      <button type="submit" class="btn btn-primary">{{ icon("check", 18) }} Speichern</button>
+    </div>
+  </form>
+
+  <details class="card entry-delete"{% if delete_error %} open{% endif %}>
+    <summary class="text-danger text-strong">Eintrag löschen</summary>
+    <form class="stack mt-3" method="post" action="/eintraege/{{ entry.id }}/loeschen"
+          data-confirm="Eintrag wirklich löschen? Er bleibt im Verlauf sichtbar.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      {% if form.next %}<input type="hidden" name="next" value="{{ form.next }}">{% endif %}
+      {% if delete_error %}
+      <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ delete_error }}</span></div>
+      {% endif %}
+      <p class="text-small text-muted">Gelöscht wird nur weich: Der Eintrag zählt nicht mehr, bleibt aber mit Verlauf
+        erhalten und kann wiederhergestellt werden.</p>
+      <div class="field">
+        <label for="d-grund">Grund{% if locked %} <span class="text-danger">*</span>{% else %} <span class="text-muted text-xs">(optional)</span>{% endif %}</label>
+        <input type="text" id="d-grund" name="grund" maxlength="500"{% if locked %} required{% endif %}
+               placeholder="z. B. doppelt erfasst"{% if delete_error %} aria-invalid="true"{% endif %}>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-danger">Löschen</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+
+  {% include "partials/entries_history.html" %}
+</div>
+{% endblock %}

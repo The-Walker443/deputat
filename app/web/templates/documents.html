@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Schreiben" (Konzept §11, L7): letter types + saved letters. Owner: app/web/documents.py #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/documents.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="documents stack">
+  <p class="banner banner-warn" role="note">
+    {{ icon("alert", 18) }}<span class="banner-body"><strong>{{ notice }}</strong>
+    Die App liefert Zahlen und Vorlagen, keine rechtliche Bewertung.</span>
+  </p>
+
+  {% if wirksam_ab %}
+  <p class="banner banner-success" role="status" data-wirksam-ab>
+    {{ icon("check", 18) }}<span class="banner-body">Geltendmachung wirksam ab <strong>{{ wirksam_ab|date_de }}</strong>
+    (Monat nach dem ersten Versand).</span>
+  </p>
+  {% endif %}
+
+  <section aria-labelledby="doc-types-title">
+    <h2 class="section-title" id="doc-types-title">Neues Schreiben</h2>
+    <nav class="card card-flush documents-types" aria-label="Schreiben-Typen">
+      {% for t in types %}
+      <a class="menu-item" href="/schreiben/neu?typ={{ t.type }}">
+        <span class="menu-icon">{{ icon("pen", 22) }}</span>
+        <span class="menu-text">
+          <span class="menu-label">{{ t.label }}</span>
+          <span class="menu-hint">{{ t.zweck }}</span>
+          <span class="menu-hint documents-adressat">An: {{ t.adressat }}{% if t.dienstweg %}, {{ t.dienstweg }}{% endif %}{% if t.abdruck %} · Abdruck {{ t.abdruck }}{% endif %}</span>
+        </span>
+        {{ icon("chevron-right", 18, "icon menu-chevron") }}
+      </a>
+      {% endfor %}
+    </nav>
+  </section>
+
+  <section aria-labelledby="doc-list-title">
+    <h2 class="section-title" id="doc-list-title">Gespeicherte Schreiben</h2>
+    {% if documents %}
+    <ul class="card card-flush list documents-list">
+      {% for d in documents %}
+      <li>
+        <a class="list-item documents-item" href="/schreiben/{{ d.id }}">
+          <span class="list-item-main">
+            <span class="list-item-title">{{ d.type_label }}</span>
+            <span class="list-item-meta">
+              erstellt {{ d.created_at|datetime_de }}
+              {%- if d.period_from and d.period_to %} · {{ d.period_from|date_de }} – {{ d.period_to|date_de }}{% endif %}
+              {%- if d.note %} · {{ d.note|truncate(60) }}{% endif %}
+            </span>
+          </span>
+          <span class="list-item-end">
+            {% if d.sent_on %}<span class="badge badge-success">versendet {{ d.sent_on|date_short }}</span>
+            {% else %}<span class="badge badge-outline">Entwurf</span>{% endif %}
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state card">
+      {{ icon("file", 36) }}
+      <p class="text-muted">Noch keine Schreiben gespeichert.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

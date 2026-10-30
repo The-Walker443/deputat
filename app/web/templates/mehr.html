@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Tab "Mehr" (routed by app/web/pages.py, GET /mehr): secondary screens + short "Über / Rechenregeln". #}
+{% block head_scripts %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+
+{% block content %}
+{% set items = [
+  {"href": "/eintraege", "label": "Einträge", "icon": "list", "hint": "Alle Zeiteinträge, Historie, Bearbeiten"},
+  {"href": "/kalender", "label": "Kalender", "icon": "calendar", "hint": "Schuljahr, Ferien, Feiertage, Urlaub, Abwesenheiten"},
+  {"href": "/stundenplan", "label": "Stundenplan", "icon": "grid", "hint": "Wochenraster, Versionen, Vorschläge"},
+  {"href": "/monate", "label": "Monate & Berichte", "icon": "file", "hint": "Monatsabschluss, Berichte, Mehrarbeit"},
+  {"href": "/import", "label": "Import", "icon": "upload", "hint": "Bestehende Aufzeichnungen übernehmen"},
+  {"href": "/export", "label": "Export & Backup", "icon": "file", "hint": "CSV, JSON, ICS, Datensicherung"},
+  {"href": "/schreiben", "label": "Schreiben", "icon": "pen", "hint": "Vorlagen für Geltendmachung & Co."},
+  {"href": "/einstellungen", "label": "Einstellungen", "icon": "settings", "hint": "UPZ, Kategorien, Zeitraster, Sensor-API"},
+] %}
+<div class="stack admin">
+  <nav class="menu-list card card-flush" aria-label="Weitere Bereiche">
+    {% for item in items %}
+    <a class="menu-item" href="{{ item.href }}">
+      <span class="menu-icon">{{ icon(item.icon, 22) }}</span>
+      <span class="menu-text">
+        <span class="menu-label">{{ item.label }}</span>
+        <span class="menu-hint">{{ item.hint }}</span>
+      </span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <section class="card about-card" aria-labelledby="about-title">
+    <details class="admin-details">
+      <summary id="about-title">Über Deputat · Rechenregeln</summary>
+      <div class="stack-sm mt-2 admin-help">
+        <p>Deputat vergleicht deine erfasste Arbeitszeit mit dem Soll eines Vollzeitbeamten mit 40-Stunden-Woche
+          (Referenz-Soll), skaliert mit deinem Teilzeitfaktor.</p>
+        <ul class="stack-sm">
+          <li><strong>Tages-Soll</strong> = 40 h ÷ 5 × Teilzeitfaktor an Schul-, Ferien-, unterrichtsfreien und
+            Fortbildungstagen; 0 an Wochenenden, Feiertagen und Urlaubstagen.</li>
+          <li><strong>Urlaub:</strong> Die Urlaubstage (Standard 30) werden auf Ferien-Werktage gelegt (Standard: Sommerferien zuerst).
+            Die übrigen Ferientage bauen das Konto ab.</li>
+          <li><strong>Krankheit</strong> neutralisiert das Soll (Konto bleibt gleich), sofern eingestellt.</li>
+          <li><strong>Saldo</strong> = Summe Ist − Referenz-Soll in der Kontoperiode. Mehrarbeit im engen Sinn
+            (Art. 87 BayBG) wird getrennt nach Unterrichtsstunden gezählt.</li>
+          <li><strong>EU-Mittel:</strong> Wochenarbeitszeit im 12-Monats-Mittel, Ampel bei 48 h.</li>
+        </ul>
+        <p>Alle Daten bleiben auf deinem Server. Die Rechtsgrundlagen sind vor dem Einsatz zu prüfen; die App ersetzt
+          keine Rechtsberatung.</p>
+      </div>
+    </details>
+    <dl class="dl">
+      <dt>Version</dt><dd>{{ app_version }}</dd>
+      <dt>Rechenregeln</dt><dd>v{{ rules_version }}</dd>
+    </dl>
+  </section>
+</div>
+{% endblock %}

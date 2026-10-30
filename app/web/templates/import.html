@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Import step 1 (upload) + list of earlier imports with undo + remembered category mappings (Konzept §12). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/import.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="import stack">
+  {% include "partials/import_steps.html" %}
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+  {% endif %}
+
+  <form method="post" action="/import" enctype="multipart/form-data" class="card stack" data-busy-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <h2 class="card-title">Bestehende Aufzeichnungen übernehmen</h2>
+    <p class="text-small text-muted">Eine Tabelle mit bisherigen Arbeitszeiten hochladen (CSV oder Excel-XLSX).
+      In den nächsten Schritten ordnest du die Spalten zu, prüfst das Ergebnis und übernimmst die Einträge.
+      Ein Import lässt sich später als Ganzes rückgängig machen.</p>
+    <div class="field">
+      <label for="import-file">Datei</label>
+      <input type="file" id="import-file" name="datei" class="import-upload-file" required
+             accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <span class="field-hint">CSV (Trennzeichen und Zeichensatz werden erkannt) oder XLSX, höchstens {{ max_mb }} MB.
+        Dauer als „2,5“ oder „2:30“, Datum als „01.10.2026“ oder „2026-10-01“. Ende nach Mitternacht als
+        „01:30+1“, Tagesende als „24:00“. Zeilen außerhalb eines angelegten Schuljahres werden nur auf Wunsch übernommen.</span>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary">{{ icon("upload", 18) }} Hochladen und Vorschau zeigen</button>
+    </div>
+  </form>
+
+  <section aria-labelledby="batches-title">
+    <h2 class="section-title" id="batches-title">Bisherige Importe</h2>
+    {% if batches %}
+    <ul class="list card card-flush import-batches">
+      {% for b in batches %}
+      {% set st = stage_labels.get(b.stage, (b.stage or "–", "badge-outline")) %}
+      <li class="list-item import-batch">
+        <span class="list-item-main">
+          <span class="list-item-title">{{ b.filename }}</span>
+          <span class="list-item-meta">{{ b.created_local }}
+            {% if b.stage == "importiert" %}· {{ b.entries_active }} Einträge aktiv{% if b.entries_locked %}, {{ b.entries_locked }} in abgeschlossenen Monaten{% endif %}{% endif %}
+            {% if b.notes %}<br>{{ b.notes }}{% endif %}</span>
+        </span>
+        <span class="list-item-end import-batch-actions">
+          <span class="badge {{ st[1] }}">{{ st[0] }}</span>
+          {% if b.stage == "importiert" %}
+          <a class="btn btn-ghost btn-sm" href="/import/{{ b.id }}/ergebnis">Details</a>
+          <a class="btn btn-secondary btn-sm" href="/import/{{ b.id }}/rueckgaengig">Rückgängig</a>
+          {% elif b.stage in ("hochgeladen", "geprueft") %}
+          <a class="btn btn-secondary btn-sm" href="/import/{{ b.id }}{% if b.stage == 'geprueft' %}/pruefen{% endif %}">Fortsetzen</a>
+          <a class="btn btn-ghost btn-sm" href="/import/{{ b.id }}/rueckgaengig">Verwerfen</a>
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted text-small">Noch keine Importe.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="mappings-title" id="zuordnungen">
+    <h2 class="section-title" id="mappings-title">Gemerkte Kategorie-Zuordnungen</h2>
+    {% if mappings %}
+    <div class="table-wrap">
+      <table class="table table-compact import-memory">
+        <thead><tr><th scope="col">Text in der Datei</th><th scope="col">Kategorie</th><th scope="col"><span class="visually-hidden">Aktion</span></th></tr></thead>
+        <tbody>
+          {% for m in mappings %}
+          <tr>
+            <td>{{ m.source_text }}</td>
+            <td><strong>{{ m.category_code }}</strong> {{ m.category_name or "" }}{% if not m.valid %} <span class="badge badge-danger">unbekannt</span>{% endif %}</td>
+            <td class="text-right">
+              <form method="post" action="/import/zuordnungen/loeschen">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                <input type="hidden" name="source_text" value="{{ m.source_text }}">
+                <button type="submit" class="btn btn-ghost btn-sm">Vergessen</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted text-small">Noch keine. Zuordnungen aus Schritt 3 werden beim Übernehmen gemerkt und beim nächsten Import automatisch verwendet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

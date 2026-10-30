@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Import step 4: result summary of a committed (or undone) batch. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="import stack">
+  {% include "partials/import_steps.html" %}
+
+  <section class="card stack">
+    <div class="card-header">
+      <h2 class="card-title">{% if info.stage == "rueckgaengig" %}Import rückgängig gemacht{% else %}{{ icon("check", 20) }} Import übernommen{% endif %}</h2>
+      {% set st = stage_labels.get(info.stage, (info.stage, "badge-outline")) %}
+      <span class="badge {{ st[1] }}">{{ st[0] }}</span>
+    </div>
+    <p class="text-small text-muted">{{ info.label }}</p>
+    <div class="kpi-grid">
+      <div class="kpi"><span class="kpi-label">Zeilen übernommen</span><span class="kpi-value">{{ info.rows_imported or 0 }}</span>
+        <span class="kpi-sub">von {{ info.rows_total or 0 }}</span></div>
+      <div class="kpi"><span class="kpi-label">Einträge erzeugt</span><span class="kpi-value">{{ info.entries_created }}</span>
+        <span class="kpi-sub">{{ info.entries_active }} aktiv</span></div>
+      {% for key, label in (("fehler", "Fehlerzeilen"), ("duplikat", "Duplikate"), ("ausgeschlossen", "ausgeschlossen")) %}
+      {% if skipped.get(key) %}
+      <div class="kpi"><span class="kpi-label">{{ label }}</span><span class="kpi-value">{{ skipped[key] }}</span>
+        <span class="kpi-sub">übersprungen</span></div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% if info.notes %}<p class="text-small">{{ info.notes }}</p>{% endif %}
+  </section>
+
+  {% if months %}
+  <section aria-labelledby="res-months-title">
+    <h2 class="section-title" id="res-months-title">Übernommen je Monat</h2>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Monat</th><th scope="col" class="num">Einträge</th><th scope="col" class="num">Stunden</th><th scope="col"><span class="visually-hidden">Links</span></th></tr></thead>
+        <tbody>
+          {% for m in months %}
+          <tr>
+            <td>{{ m.ym|month_de }}</td>
+            <td class="num">{{ m.count }}</td>
+            <td class="num">{{ m.hm }}</td>
+            <td class="text-right">{% if m.in_period %}<a href="/monate/{{ m.ym }}">Monat ansehen</a>{% else %}<a href="{{ m.entries_href }}" title="Monat liegt außerhalb der Kontoperioden">Einträge ansehen</a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="banner banner-info" role="note">
+    {{ icon("info", 18) }}
+    <span class="banner-body">Importierte Einträge sind in Berichten als „{{ info.label }}“ gekennzeichnet. Zeilen nur mit Dauer
+      tragen das Kennzeichen „ohne Zeitgrenzen“.</span>
+  </div>
+
+  <div class="btn-group">
+    <a class="btn btn-primary" href="/eintraege">Einträge ansehen</a>
+    <a class="btn btn-secondary" href="/import">Zur Import-Übersicht</a>
+    {% if info.stage == "importiert" %}
+    <a class="btn btn-ghost" href="/import/{{ batch.id }}/rueckgaengig">Import rückgängig machen</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

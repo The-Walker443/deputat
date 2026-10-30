@@ -1,0 +1,66 @@
+{% from "partials/icons.html" import icon %}
+{# Ferien-Guthaben-Rechner (Konzept §6.4). Inputs post via HTMX (debounced) to /konto/ferienrechner, which
+   stores settings.ferienarbeit_schaetzung (autosave, said so in the UI; the submit button exists only without
+   JavaScript), re-renders this partial and triggers "deputat-konto-changed".
+   Inputs keep stable ids so htmx restores focus after the swap. #}
+{% if error %}
+<div class="banner banner-danger mb-3" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+{% endif %}
+{% if not res or not res.ok %}
+<p class="text-small text-muted">{{ res.message if res else "Keine Daten." }}</p>
+{% elif not ferien %}
+<p class="text-small text-muted" data-no-ferien>Keine kommenden Ferien in diesem Schuljahr erfasst.
+  <a href="/kalender">Ferien im Kalender eintragen</a></p>
+{% else %}
+<form method="post" action="/konto/ferienrechner" class="acct-rechner" data-ferienrechner
+      hx-post="/konto/ferienrechner" hx-target="#acct-rechner" hx-swap="innerHTML"
+      hx-trigger="change, input delay:900ms" hx-sync="this:replace">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+  <input type="hidden" name="urlaub" value="{{ view_mode }}">
+  <input type="hidden" name="klassenfahrt" value="{{ view_variante }}">
+  <div class="table-wrap acct-rechner-wrap">
+    <table class="table table-stack acct-rechner-table">
+      <thead>
+        <tr>
+          <th scope="col">Ferien</th>
+          <th scope="col" class="num">Saldo vorher</th>
+          <th scope="col" class="num">Abbau-Kapazität</th>
+          <th scope="col" class="num">Geplante Ferienarbeit</th>
+          <th scope="col" class="num">Saldo danach</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in ferien %}
+        <tr data-ferien-row="{{ f.id }}">
+          <td data-label="Ferien">
+            <span class="acct-ferien-name">
+              <span class="text-strong">{{ f.name }}</span>
+              <span class="text-xs text-muted">{{ f.start|date_short }}–{{ f.end|date_short }}{% if f.laufend %} · läuft{% endif %}</span>
+            </span>
+          </td>
+          <td data-label="Saldo vorher" class="num{% if f.saldo_vor > 0 %} is-positive{% elif f.saldo_vor < 0 %} is-negative{% endif %}">{{ f.saldo_vor|hm(plus=True) }}</td>
+          <td data-label="Abbau-Kapazität" class="num">−{{ f.abbau|hm }}</td>
+          <td data-label="Geplante Ferienarbeit" class="num">
+            <span class="acct-plan">
+              <input class="input acct-plan-input" type="text" inputmode="decimal" autocomplete="off"
+                     id="plan-{{ f.id }}" name="plan_{{ f.id }}" value="{{ f.value }}"
+                     placeholder="{{ f.placeholder or '0' }}" maxlength="8"
+                     aria-label="Geplante Ferienarbeit {{ f.name }} in Stunden"{% if f.invalid %} aria-invalid="true"{% endif %}>
+              <span class="text-xs text-muted">h</span>
+            </span>
+            {% if f.bisher %}<span class="text-xs text-muted acct-plan-note">davon erledigt {{ f.bisher|hm }}</span>{% endif %}
+            {% if f.is_default %}<span class="text-xs text-faint acct-plan-note">Standard: Mittel früherer Ferien</span>{% endif %}
+          </td>
+          <td data-label="Saldo danach" class="num text-strong{% if f.saldo_nach > 0 %} is-positive{% elif f.saldo_nach < 0 %} is-negative{% endif %}" data-saldo-nach>{{ f.saldo_nach|hm(plus=True) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-small acct-rechner-text" data-rechner-text>{{ ferien[0].text }}</p>
+  <div class="row-between mt-2">
+    <span class="text-xs text-muted" role="status">{% if saved %}{{ icon("check", 14) }} gespeichert{% elif not error %}Änderungen werden beim Tippen automatisch übernommen.{% endif %}</span>
+    <noscript><button type="submit" class="btn btn-secondary btn-sm">Speichern</button></noscript>
+  </div>
+</form>
+{% endif %}

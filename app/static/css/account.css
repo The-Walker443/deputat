@@ -1,0 +1,387 @@
+/* Deputat – screens Konto, Woche, Jahr (loaded only by account.html, week.html, year.html).
+   Builds on the tokens and components of app.css. Chart colors are tokens here so charts.js can read
+   them via getComputedStyle (plain rgb()/hex values only – the canvas and Chart.js parse them).
+   Sections: chart tokens · Konto · Woche · Jahr */
+
+/* ------------------------------------------------------------------ chart tokens */
+:root {
+  --chart-saldo: #2453c9;
+  --chart-forecast: #6b7686;
+  --chart-zero: #5b6573;
+  --chart-grid: rgba(26, 31, 38, 0.08);
+  --chart-ferien: rgba(36, 140, 120, 0.12);
+  --chart-urlaub: rgba(36, 140, 120, 0.30);
+  --chart-holiday: #b4630a;
+  --chart-gm: #18794e;
+  --chart-today: #8a93a0;
+  --chart-bar: #2453c9;
+  --chart-bar-warn: #c27c0e;
+  --chart-bar-danger: #c4302b;
+  --chart-bench: #1f62a8;
+
+  /* Heatmap + calendar day states */
+  --hm-empty: #e6e9ee;
+  --hm-1: #d6e2fb;
+  --hm-2: #a9c1f3;
+  --hm-3: #6f95e6;
+  --hm-4: #3a67d1;
+  --hm-5: #1c3f99;
+  --hm-ferien: #cdeee5;
+  --hm-urlaub: #7fcab5;
+  --hm-krank: #f4c7c4;
+  --hm-feiertag: #f3ddb5;
+  --hm-wochenende: #f0f2f5;
+  --hm-outside: transparent;
+
+  --week-hour-h: 34px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-saldo: #6e9bff;
+    --chart-forecast: #a3acb8;
+    --chart-zero: #a3acb8;
+    --chart-grid: rgba(232, 235, 239, 0.09);
+    --chart-ferien: rgba(76, 195, 160, 0.13);
+    --chart-urlaub: rgba(76, 195, 160, 0.32);
+    --chart-holiday: #f0b44c;
+    --chart-gm: #4cc38a;
+    --chart-today: #788290;
+    --chart-bar: #6e9bff;
+    --chart-bar-warn: #f0b44c;
+    --chart-bar-danger: #ff7b72;
+    --chart-bench: #6cb4ff;
+
+    --hm-empty: #2b313b;
+    --hm-1: #1f2f52;
+    --hm-2: #2a4682;
+    --hm-3: #3d63b8;
+    --hm-4: #5b85e6;
+    --hm-5: #9dbaff;
+    --hm-ferien: #193a33;
+    --hm-urlaub: #2d7464;
+    --hm-krank: #4a2423;
+    --hm-feiertag: #463518;
+    --hm-wochenende: #20252d;
+  }
+}
+
+/* ------------------------------------------------------------------ Konto */
+.acct-chart-card { padding-bottom: var(--space-3); }
+.acct-chart-head { margin-bottom: var(--space-2); }
+.acct-chart { height: 280px; }
+@media (min-width: 640px) { .acct-chart { height: 340px; } }
+.acct-chart-fallback,
+.chart-fallback {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0;
+}
+
+.acct-legend {
+  list-style: none; margin: var(--space-3) 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs); color: var(--text-muted);
+}
+.acct-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.lg { display: inline-block; width: 18px; height: 10px; border-radius: 2px; flex: none; }
+.lg-line { height: 3px; background: var(--chart-saldo); }
+.lg-dash { height: 0; border-top: 2px dashed var(--chart-forecast); border-radius: 0; }
+.lg-zero { height: 0; border-top: 2px dotted var(--chart-zero); border-radius: 0; }
+.lg-ferien { background: var(--chart-ferien); border: 1px solid var(--chart-urlaub); }
+.lg-urlaub { background: var(--chart-urlaub); }
+.lg-holiday {
+  width: 0; height: 0; border-radius: 0; background: none;
+  border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid var(--chart-holiday);
+}
+.lg-gm { height: 0; border-top: 2px dashed var(--chart-gm); border-radius: 0; }
+.acct-gm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+.acct-tiles .kpi-label sub, .kpi-label sub { font-size: 0.75em; line-height: 0; }
+/* Long labels ("Prognose Periodenende", "EU-12-Monats-Mittel") wrap instead of being cut off at 375 px. */
+.acct-tiles .kpi-label, [data-year-kpis] .kpi-label { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.acct-eu { display: inline-flex; align-items: center; gap: var(--space-2); }
+.acct-warn .kpi-value { color: var(--warn); }
+.kpi-link { color: inherit; text-decoration: none; }
+
+.acct-switch {
+  display: flex; flex-wrap: wrap; gap: 3px; padding: 3px;
+  background: var(--surface-2); border-radius: var(--radius);
+}
+.acct-switch-opt {
+  flex: 1 1 140px; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 4px var(--space-2); border-radius: calc(var(--radius) - 3px);
+  color: var(--text-muted); text-decoration: none; font-size: var(--fs-sm); font-weight: 600; text-align: center;
+  line-height: 1.2;
+}
+.acct-switch-opt small { font-size: var(--fs-xs); font-weight: 500; color: var(--primary); }
+.acct-switch-opt:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.acct-switch-opt.is-active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.acct-rechner-wrap { margin: 0 calc(-1 * var(--space-1)); }
+.acct-rechner-table td { vertical-align: middle; }
+.acct-ferien-name { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.acct-plan { display: inline-flex; align-items: center; gap: var(--space-1); }
+.acct-plan .acct-plan-input { width: 5.5rem; text-align: right; }
+.acct-plan-note { display: block; }
+.acct-rechner-text { margin-top: var(--space-3); color: var(--text-muted); }
+/* Wide layout: let the long column headers wrap so all five columns fit the 760 px container. */
+@media (min-width: 561px) {
+  .acct-rechner-table th { white-space: normal; vertical-align: bottom; }
+  .acct-rechner-table th, .acct-rechner-table td { padding-left: var(--space-2); padding-right: var(--space-2); }
+  .acct-rechner-table td[data-label="Ferien"] { min-width: 9.5rem; }
+  .acct-rechner-table .acct-plan-note { white-space: normal; }
+}
+@media (max-width: 560px) {
+  .acct-rechner-table td[data-label="Geplante Ferienarbeit"] { flex-wrap: wrap; align-items: center; }
+  .acct-rechner-table td[data-label="Geplante Ferienarbeit"] .acct-plan-note { flex-basis: 100%; text-align: right; }
+  .acct-rechner-table td[data-label="Ferien"] { text-align: left; }
+}
+
+.acct-compare { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
+@media (min-width: 640px) { .acct-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.acct-compare-col { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); }
+.acct-compare-col.is-massgeblich { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+
+.acct-empty .menu-icon { color: var(--primary); }
+
+/* ------------------------------------------------------------------ Woche */
+.wk-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.wk-nav-title { display: flex; flex-direction: column; align-items: center; line-height: 1.25; text-align: center; }
+.wk-nav-title .text-strong { font-size: var(--fs-lg); }
+.wk-today-link { margin: calc(-1 * var(--space-3)) 0 0; text-align: center; }
+html.wk-navigating .wk { opacity: 0.55; transition: opacity var(--transition); }
+
+.wk-kpis .wk-kpi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wk-kpis .kpi-label sub { font-size: 0.75em; text-transform: none; line-height: 0; }
+.wk-delta sub { font-size: 0.75em; line-height: 0; }
+
+.wk-meter { position: relative; margin: var(--space-4) 0 var(--space-5); padding-top: 18px; }
+.wk-meter-track { height: 12px; border-radius: var(--radius-pill); background: var(--surface-3); overflow: hidden; }
+.wk-meter-bar { display: block; height: 100%; background: var(--chart-bar); border-radius: inherit; }
+.wk-meter.is-over-wmax .wk-meter-bar { background: var(--chart-bar-warn); }
+.wk-meter.is-over-eu .wk-meter-bar { background: var(--chart-bar-danger); }
+.wk-tick {
+  position: absolute; top: 14px; bottom: -4px; width: 0; border-left: 2px solid var(--text-muted);
+  transform: translateX(-1px);
+}
+.wk-tick > span {
+  position: absolute; left: 0; transform: translateX(-50%); white-space: nowrap;
+  font-size: 0.6875rem; font-weight: 600; color: var(--text-muted); line-height: 1;
+}
+/* Soll / W_max labels above the bar, reference lines below. */
+.wk-tick-soll > span, .wk-tick-wmax > span { top: -14px; }
+.wk-tick-ref > span, .wk-tick-eu > span, .wk-tick-bench > span { bottom: -14px; }
+.wk-tick-ref { border-left-style: dotted; border-color: var(--chart-zero); }
+.wk-tick-eu { border-color: var(--chart-bar-danger); }
+.wk-tick-eu > span { color: var(--chart-bar-danger); }
+.wk-tick-wmax { border-color: var(--chart-gm); }
+.wk-tick-wmax > span { color: var(--chart-gm); }
+.wk-tick-soll { border-color: var(--text); }
+.wk-tick-bench { display: none; border-left: 2px dashed var(--chart-bench); }
+.wk-tick-bench > span { color: var(--chart-bench); bottom: calc(-26px - var(--row, 0) * 12px); }
+.wk-bm-list { display: none; list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.wk-bm-label { min-height: 44px; }
+.wk-summary.show-bench .wk-bench { display: block; }
+.wk-summary.show-bench .wk-bm-list { display: block; }
+.wk-summary.show-bench .wk-meter { margin-bottom: calc(var(--space-5) + var(--bench-rows, 1) * 12px); }
+
+/* Grid: axis column + 7 day columns; header / body / footer rows. */
+.wk-grid-card { padding-left: var(--space-2); padding-right: var(--space-2); }
+.wk-grid {
+  --wk-axis: 26px;
+  display: grid;
+  grid-template-columns: var(--wk-axis) repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto calc(var(--wk-hours, 10) * var(--week-hour-h)) auto;
+  column-gap: 2px; position: relative;
+  overflow-x: auto;
+}
+@media (min-width: 640px) { .wk-grid { --wk-axis: 34px; column-gap: 4px; } }
+.wk-corner { min-width: 0; }
+.wk-head {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  min-height: 44px; padding: 2px 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text); text-decoration: none; line-height: 1.15;
+}
+.wk-head-wd { font-size: var(--fs-xs); color: var(--text-muted); font-weight: 600; }
+.wk-head-day { font-size: var(--fs-md); font-weight: 650; font-variant-numeric: tabular-nums; }
+.wk-head.is-today .wk-head-day {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--primary); color: var(--primary-contrast);
+}
+.wk-head.is-today .wk-head-wd { color: var(--primary); }
+
+.wk-axis { position: relative; display: grid; grid-template-rows: repeat(var(--wk-hours, 10), 1fr); }
+.wk-axis span {
+  font-size: 0.6875rem; color: var(--text-faint); text-align: right; padding-right: 3px;
+  transform: translateY(-0.5em); font-variant-numeric: tabular-nums;
+}
+.wk-axis span:first-child { transform: none; }
+
+.wk-col {
+  position: relative; min-width: 0; border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background-color: var(--surface-2);
+  background-image: linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 100% calc(100% / var(--wk-hours, 10));
+}
+.wk-col.wk-kind-wochenende, .wk-col.wk-kind-ausserhalb { background-color: var(--hm-wochenende); }
+.wk-col.wk-kind-ferientag, .wk-col.wk-kind-unterrichtsfrei { background-color: var(--hm-ferien); }
+.wk-col.wk-abs-urlaub { background-color: var(--hm-urlaub); }
+.wk-col.wk-abs-krank { background-color: var(--hm-krank); }
+.wk-col.wk-kind-feiertag { background-color: var(--hm-feiertag); }
+.wk-col.is-today { box-shadow: inset 0 0 0 2px var(--primary); }
+
+.wk-block {
+  position: absolute; min-height: 4px; box-sizing: border-box; overflow: hidden;
+  padding: 1px 2px; border-radius: 4px; border: 1px solid var(--surface);
+  background: var(--c, var(--primary)); color: #fff; text-decoration: none;
+  font-size: 0.6875rem; font-weight: 700; line-height: 1.1; text-shadow: 0 0 2px rgb(0 0 0 / 0.45);
+}
+.wk-block:hover, .wk-block:focus-visible { filter: brightness(1.08); z-index: 2; outline: 2px solid var(--text); outline-offset: 0; }
+.wk-block.is-running { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 0.22) 6px 12px); }
+.wk-block.is-pseudo { opacity: 0.55; }
+.wk-block span { display: block; overflow: hidden; text-overflow: clip; white-space: nowrap; }
+
+.wk-foot-label { display: flex; flex-direction: column; align-items: flex-end; padding: 4px 3px 0 0; font-size: 0.625rem; color: var(--text-faint); line-height: 1.5; }
+.wk-foot {
+  display: flex; flex-direction: column; align-items: center; padding-top: 4px; min-width: 0;
+  font-size: 0.6875rem; line-height: 1.5; text-align: center;
+}
+.wk-foot.is-today .text-strong { color: var(--primary); }
+.wk-unbounded {
+  margin-top: 2px; padding: 0 6px; border-radius: var(--radius-pill); background: var(--surface-3);
+  color: var(--text); text-decoration: none; font-weight: 650;
+}
+
+.wk-days { list-style: none; margin: 0; padding: 0; }
+.wk-day { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); scroll-margin-top: calc(var(--topbar-h) + 8px); }
+.wk-day:last-child { border-bottom: 0; }
+.wk-day.is-today { background: var(--primary-soft); }
+.wk-day:target { box-shadow: inset 3px 0 0 var(--primary); }
+.wk-day-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-3); }
+.wk-day-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.wk-day-sum { white-space: nowrap; }
+.wk-badge { background: var(--surface-3); color: var(--text-muted); white-space: normal; }
+.wk-badge.wk-kind-ferientag, .wk-badge.wk-kind-unterrichtsfrei { background: var(--hm-ferien); color: var(--text); }
+.wk-badge.wk-kind-feiertag { background: var(--hm-feiertag); color: var(--text); }
+.wk-badge.wk-abs-urlaub { background: var(--hm-urlaub); color: var(--text); }
+.wk-badge.wk-abs-krank { background: var(--hm-krank); color: var(--text); }
+.wk-badge.wk-kind-schultag { background: var(--primary-soft); color: var(--primary); }
+
+.wk-entries { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.wk-entry {
+  display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-1);
+  border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-size: var(--fs-sm);
+}
+.wk-entry:hover { background: var(--surface-2); }
+.wk-entry.is-pseudo { color: var(--text-muted); }
+.wk-entry-time { flex: none; font-size: var(--fs-xs); min-width: 6.6em; }
+.wk-entry-name { flex: 1; min-width: 0; }
+.wk-entry-dur { flex: none; }
+.wk-day-actions { display: flex; flex-wrap: wrap; column-gap: var(--space-4); }
+.wk-add {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-top: var(--space-1);
+  color: var(--primary); text-decoration: none; font-weight: 600;
+}
+
+.wk-stack { display: flex; height: 12px; border-radius: var(--radius-pill); overflow: hidden; background: var(--surface-3); margin-bottom: var(--space-3); }
+.wk-stack span { display: block; height: 100%; background: var(--c, var(--primary)); }
+.wk-cat { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--border); }
+.wk-cat:last-child { border-bottom: 0; }
+.wk-cat.is-unterricht { font-weight: 650; }
+.wk-cat-share { width: 3.5em; text-align: right; }
+.wk-hint { text-align: center; }
+@media (hover: hover) and (pointer: fine) { .wk-hint { display: none; } }
+/* No-JS variant of the benchmark toggle (separate rules: an unsupported :has() must not drop the ones above). */
+.wk-summary:has(.wk-bm-toggle:checked) .wk-bench, .wk-summary:has(.wk-bm-toggle:checked) .wk-bm-list { display: block; }
+.wk-summary:has(.wk-bm-toggle:checked) .wk-meter { margin-bottom: calc(var(--space-5) + var(--bench-rows, 1) * 12px); }
+
+/* ------------------------------------------------------------------ Jahr */
+.yr-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.yr-head p { margin: 0; }
+.yr-periods { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.yr-periods .chip { --chip-color: var(--primary); min-height: 44px; text-decoration: none; }
+.yr-kpi-unterricht .kpi-value { color: var(--primary); }
+
+/* Heatmap: one column per ISO week, rows Mo–So; scrolls inside its own container. */
+.yr-heat-wrap {
+  --hm-cell: 13px;
+  --hm-gap: 2px;
+  position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  padding-bottom: var(--space-2);
+}
+@media (min-width: 640px) { .yr-heat-wrap { --hm-cell: 11px; } }
+.yr-heat { display: inline-flex; gap: var(--hm-gap); min-width: max-content; }
+.yr-heat-col { display: grid; grid-template-rows: 14px repeat(7, var(--hm-cell)); gap: var(--hm-gap); }
+.yr-heat-month {
+  font-size: 0.625rem; line-height: 14px; color: var(--text-muted); white-space: nowrap; width: var(--hm-cell);
+  overflow: visible;
+}
+.yr-heat-wd { margin-right: 2px; }
+.yr-heat-wdl { font-size: 0.625rem; line-height: var(--hm-cell); color: var(--text-faint); width: 1.6em; }
+.yr-heat-col.is-current .yr-heat-month { color: var(--primary); font-weight: 700; }
+
+.hm {
+  display: block; width: var(--hm-cell, 13px); height: var(--hm-cell, 13px); border-radius: 3px;
+  background: var(--hm-empty); text-decoration: none; position: relative;
+}
+.hm-out { background: var(--hm-outside); }
+.hm-l0 { background: var(--hm-empty); }
+.hm-l1 { background: var(--hm-1); }
+.hm-l2 { background: var(--hm-2); }
+.hm-l3 { background: var(--hm-3); }
+.hm-l4 { background: var(--hm-4); }
+.hm-l5 { background: var(--hm-5); }
+.hm-ferien { background: var(--hm-ferien); }
+.hm-urlaub { background: var(--hm-urlaub); }
+.hm-krank { background: var(--hm-krank); }
+.hm-feiertag { background: var(--hm-feiertag); }
+.hm-we { background: var(--hm-wochenende); }
+.hm.is-frei { box-shadow: inset 0 -3px 0 var(--chart-urlaub); }
+.hm.has-ist::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--text);
+}
+.hm.is-future { opacity: 0.55; }
+.hm.is-today { outline: 2px solid var(--text); outline-offset: 0; z-index: 1; }
+a.hm:hover { outline: 2px solid var(--primary); outline-offset: 0; z-index: 1; }
+
+.yr-legend {
+  list-style: none; margin: var(--space-3) 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs); color: var(--text-muted);
+}
+.yr-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.yr-legend .hm { --hm-cell: 12px; flex: none; }
+
+/* Categories: donut + table */
+.yr-cat { display: grid; grid-template-columns: 1fr; gap: var(--space-4); align-items: start; }
+@media (min-width: 640px) { .yr-cat { grid-template-columns: minmax(0, 240px) minmax(0, 1fr); } }
+.yr-donut { height: 220px; max-width: 260px; margin: 0 auto; }
+.yr-donut-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none; line-height: 1.2;
+}
+.yr-donut-value { font-size: var(--fs-xl); font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.yr-cat-name { display: flex; align-items: baseline; gap: var(--space-2); }
+.yr-cat-name .swatch { transform: translateY(1px); }
+.yr-cat-table tr.is-unterricht td { font-weight: 650; }
+.yr-cat-table tfoot th, .yr-cat-table tfoot td { border-bottom: 0; }
+.yr-unterricht-row th, .yr-unterricht-row td { background: var(--primary-soft); color: var(--primary); }
+
+/* Histogram */
+.yr-hist { height: 240px; }
+@media (min-width: 640px) { .yr-hist { height: 280px; } }
+.yr-hist-dl { max-width: 320px; }
+.yr-bm-label { min-height: 44px; }
+.yr-bm-list { display: none; list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.card.show-bench .yr-bm-list { display: block; }
+
+/* Month list */
+.yr-months tr.is-future td { color: var(--text-faint); }
+.yr-months tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+.yr-months a.badge { text-decoration: none; min-height: 24px; }
+.yr-months td a.text-strong { color: var(--text); }
+@media (max-width: 560px) {
+  .yr-months td[data-label="Monat"] { font-size: var(--fs-md); }
+  .yr-months td a { display: inline-flex; align-items: center; min-height: 32px; }
+}
+.card:has([data-benchmark-toggle]:checked) .yr-bm-list { display: block; }

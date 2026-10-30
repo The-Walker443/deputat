@@ -1,0 +1,31 @@
+{% from "partials/icons.html" import icon %}
+{# Timetable suggestions for today (time_entry.status='vorschlag'). Rendered only when there are any.
+   "Tag wie geplant" posts to /api/days/{date}/confirm from timer.js (timetable backend); per-lesson deviations on
+   /tag/{date} (app/web/days.py). #}
+{% if suggestions %}
+<section class="card today-suggestions" data-suggestions aria-labelledby="suggestions-title">
+  <div class="card-header">
+    <h2 class="card-title" id="suggestions-title">Stundenplan heute</h2>
+    <span class="badge badge-primary">{{ suggestions|length }} Vorschläge</span>
+  </div>
+  <p class="text-small text-muted mb-3">Vorschläge zählen erst nach dem Bestätigen.</p>
+  <ul class="list today-suggestion-list">
+    {% for s in suggestions %}
+    <li class="list-item">
+      <span class="chip-dot" style="--chip-color: {{ s.color }}"></span>
+      <span class="list-item-main">
+        <span class="list-item-title">{{ s.code }} · {{ s.name }}{% if s.klasse %} · {{ s.klasse }}{% endif %}{% if s.fach %} · {{ s.fach }}{% endif %}</span>
+        <span class="list-item-meta">{% if s.has_bounds %}{{ s.start }}–{{ s.end }}{% else %}ohne Uhrzeit{% endif %}</span>
+      </span>
+      <span class="list-item-end num">{{ s.seconds|hm }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="card-footer stack-sm">
+    <button type="button" class="btn btn-primary btn-block btn-lg" data-confirm-day data-date="{{ today.isoformat() }}">
+      {{ icon("check", 18) }} Tag wie geplant
+    </button>
+    <p class="field-hint text-center">Ausfall, Vertretung oder andere Zeiten? <a href="/tag/{{ today.isoformat() }}?next=/heute">Stunden einzeln bestätigen</a>.</p>
+  </div>
+</section>
+{% endif %}

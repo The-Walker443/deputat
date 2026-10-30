@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Import step 1 (continued): file preview – first 50 rows, sheet selection, header row. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/import.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="import stack">
+  {% include "partials/import_steps.html" %}
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+  {% endif %}
+
+  <section class="card">
+    <h2 class="card-title">{{ preview.filename }}</h2>
+    <dl class="dl import-file-facts">
+      <dt>Dateityp</dt><dd>{{ preview.file_type|upper }}</dd>
+      {% if preview.file_type == "csv" %}
+      <dt>Zeichensatz</dt><dd>{{ preview.encoding }}</dd>
+      <dt>Trennzeichen</dt><dd>{{ {";": "Semikolon", ",": "Komma", "\t": "Tabulator"}.get(preview.delimiter, preview.delimiter) }}</dd>
+      {% else %}
+      <dt>Tabellenblätter</dt><dd>{{ preview.sheets|length }}</dd>
+      {% endif %}
+      <dt>Datenzeilen{% if preview.sheet %} („{{ preview.sheet }}“){% endif %}</dt><dd>{{ preview.rows_total }}</dd>
+      <dt>Kopfzeile</dt><dd>{% if preview.header_row %}Zeile {{ preview.header_row }}{% else %}keine{% endif %}</dd>
+    </dl>
+  </section>
+
+  <form method="get" action="/import/{{ batch.id }}/zuordnung" class="card stack">
+    {% if preview.sheets|length > 1 %}
+    <fieldset class="fieldset">
+      <legend>Tabellenblätter übernehmen</legend>
+      <div class="stack-sm">
+        {% for s in preview.sheets %}
+        <div class="import-sheet-row">
+          <label class="check"><input type="checkbox" name="blatt" value="{{ s }}"{% if s in selected_sheets %} checked{% endif %}> <span>{{ s }}</span></label>
+          {% if s != preview.sheet %}
+          <a class="btn btn-ghost btn-sm" href="/import/{{ batch.id }}?{{ next_query }}&amp;ansicht={{ s|urlencode }}">Vorschau</a>
+          {% else %}<span class="badge badge-primary">in der Vorschau</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <p class="field-hint mt-2">Mehrere Blätter (z. B. ein Blatt je Monat) brauchen dieselben Spaltenüberschriften.</p>
+    </fieldset>
+    {% elif preview.sheet %}
+    <input type="hidden" name="blatt" value="{{ preview.sheet }}">
+    {% endif %}
+
+    <div class="field import-header-field">
+      <label for="kopfzeile">Kopfzeile (Zeilennummer)</label>
+      <input type="number" id="kopfzeile" name="kopfzeile" min="0" inputmode="numeric"
+             value="{{ header_row if header_row is not none else '' }}" placeholder="automatisch ({{ preview.header_row or 'keine' }})">
+      <span class="field-hint">Leer = automatisch erkannt, 0 = die Datei hat keine Kopfzeile.</span>
+    </div>
+
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">Weiter: Spalten zuordnen {{ icon("chevron-right", 18) }}</button>
+      <button type="submit" class="btn btn-secondary" formaction="/import/{{ batch.id }}">Vorschau aktualisieren</button>
+    </div>
+  </form>
+
+  <section aria-labelledby="preview-title">
+    <h2 class="section-title" id="preview-title">Vorschau – erste {{ preview.rows|length }} von {{ preview.rows_total }} Zeilen</h2>
+    <div class="table-wrap import-preview-wrap">
+      <table class="table table-compact import-preview">
+        <thead>
+          <tr>
+            <th scope="col" class="num">Zeile</th>
+            {% for c in preview.columns %}
+            <th scope="col"><span class="import-col-letter">{{ c.letter }}</span> {{ c.header }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in preview.rows %}
+          <tr>
+            <td class="num text-faint">{{ r.row_no }}</td>
+            {% for cell in r.cells %}<td>{{ cell }}</td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="text-small"><a href="/import/{{ batch.id }}/rueckgaengig">Andere Datei wählen (diesen Upload verwerfen)</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,6 @@
+{# Letter preview (Markdown rendered by app.services.documents.to_html; raw HTML is neutralised). #}
+{% if preview %}
+<article class="card letter" aria-label="Vorschau des Schreibens">{{ preview }}</article>
+{% else %}
+<div class="empty-state card"><p class="text-muted">Keine Vorschau – bitte Angaben prüfen.</p></div>
+{% endif %}

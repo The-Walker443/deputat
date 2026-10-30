@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/settings_fields.html" as sf %}
+{# Screen "Einstellungen" (Konzept §4, §18): one form per section, categories link, sensor token, Datenschutz. #}
+{% block head_scripts %}{{ sf.head_assets() }}{% endblock %}
+
+{% block content %}
+{% set err_section = errors.get("_section") %}
+<div class="stack admin" data-settings>
+  <nav class="admin-toc" aria-label="Bereiche">
+    <a href="#upz">UPZ</a>
+    <a href="#konto">Konto</a>
+    <a href="#regeln">Zählregeln</a>
+    <a href="#feiertage">Feiertage</a>
+    <a href="#listen">Klassen</a>
+    <a href="#zeitraster">Zeitraster</a>
+    <a href="#kategorien">Kategorien</a>
+    <a href="#sensor">Sensor-API</a>
+    <a href="#daten">Daten</a>
+  </nav>
+
+  {% if err_section %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}
+    <span class="banner-body">{% if errors.get("_locked") %}Nicht gespeichert: Die Änderung betrifft abgeschlossene Monate – bitte im Bereich „{{ sections[err_section][0] }}“ eine Begründung angeben.{% else %}Nicht gespeichert: Bitte die markierte Angabe im Bereich „{{ sections[err_section][0] }}“ korrigieren.{% endif %}</span>
+  </div>
+  {% endif %}
+  {% for h in derived.hinweise %}
+  <div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ h }}</span></div>
+  {% endfor %}
+
+  {# ---------------------------------------------------------------- UPZ #}
+  <section class="card" id="upz" aria-labelledby="upz-title">
+    <h2 class="card-title" id="upz-title">Unterrichtspflichtzeit</h2>
+    <form method="post" action="/einstellungen/upz" class="stack-sm">
+      {{ sf.csrf(request) }}
+      <div class="form-row">
+        {{ sf.input(fields, v, errors, "upz_voll") }}
+        {{ sf.input(fields, v, errors, "upz_ist") }}
+      </div>
+      <div class="admin-computed">
+        <span>Teilzeitfaktor (für das Soll)</span>
+        <strong class="num">{{ "%.3f"|format(derived.teilzeitfaktor)|replace(".", ",") }}</strong>
+      </div>
+      <p class="field-hint">Altersermäßigung und Anrechnungsstunden senken nicht das Soll, sondern nur die erwartete
+        Unterrichtsmenge. Der Faktor rechnet daher mit UPZ tatsächlich + Ermäßigungen.</p>
+      {{ sf.input(fields, v, errors, "anrechnungsstunden") }}
+      {{ sf.input(fields, v, errors, "anrechnungs_grund") }}
+      {{ sf.input(fields, v, errors, "geburtsdatum") }}
+      <fieldset class="fieldset stack-sm" data-age-override>
+        <legend>Altersermäßigung</legend>
+        <div class="admin-computed">
+          <span>Aus dem Geburtsdatum berechnet</span>
+          <strong class="num">{{ derived.altersermaessigung_berechnet }} Std.</strong>
+        </div>
+        {{ sf.checkbox(fields, v, errors, "altersermaessigung_manuell", "data-age-toggle") }}
+        <div data-age-input{% if not v.altersermaessigung_manuell %} class="text-muted"{% endif %}>
+          {{ sf.input(fields, v, errors, "altersermaessigung") }}
+        </div>
+      </fieldset>
+      {{ sf.grund(errors, "upz", has_closed_months) }}
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- Konto #}
+  <section class="card" id="konto" aria-labelledby="konto-title">
+    <h2 class="card-title" id="konto-title">Arbeitszeitkonto</h2>
+    <form method="post" action="/einstellungen/konto" class="stack-sm">
+      {{ sf.csrf(request) }}
+      <div class="form-row">
+        {{ sf.input(fields, v, errors, "wochen_soll_voll_h") }}
+        {{ sf.input(fields, v, errors, "urlaubstage") }}
+      </div>
+      {{ sf.input(fields, v, errors, "unterrichtsstunde_min") }}
+      {{ sf.input(fields, v, errors, "urlaubs_modus") }}
+      <div class="form-row">
+        {{ sf.input(fields, v, errors, "kontoperiode") }}
+        {{ sf.input(fields, v, errors, "periode_start_md") }}
+      </div>
+      {{ sf.checkbox(fields, v, errors, "uebertrag_verrechnen") }}
+      {{ sf.input(fields, v, errors, "erfassung_ab") }}
+      {{ sf.input(fields, v, errors, "prognose_schultage") }}
+      {{ sf.grund(errors, "konto", has_closed_months) }}
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- Zählregeln #}
+  <section class="card" id="regeln" aria-labelledby="regeln-title">
+    <h2 class="card-title" id="regeln-title">Zählregeln</h2>
+    <form method="post" action="/einstellungen/regeln" class="stack-sm">
+      {{ sf.csrf(request) }}
+      {{ sf.checkbox(fields, v, errors, "grosse_pause_zaehlt") }}
+      {{ sf.checkbox(fields, v, errors, "krank_neutralisiert") }}
+      {{ sf.radios(fields, v, errors, "klassenfahrt_variante") }}
+      {{ sf.input(fields, v, errors, "klassenfahrt_cap_h") }}
+      <p class="field-hint">Klassenfahrten erfasst du als Eintrag „Schulveranstaltungen &amp; Fahrten“ mit dem Merkmal
+        Klassenfahrt. Variante B zählt pro Fahrtag höchstens die Kappung, Variante A alle erfassten Stunden.</p>
+      {{ sf.grund(errors, "regeln", has_closed_months) }}
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- Feiertage #}
+  <section class="card" id="feiertage" aria-labelledby="feiertage-title">
+    <h2 class="card-title" id="feiertage-title">Regionale Feiertage</h2>
+    <form method="post" action="/einstellungen/feiertage" class="stack-sm">
+      {{ sf.csrf(request) }}
+      <p class="admin-help">Bundesland: <strong>Bayern</strong>. Gesetzliche Feiertage werden automatisch berechnet.</p>
+      {% for value, label in regional_options.items() %}
+      <label class="admin-check-row">
+        <input type="checkbox" name="regionale_feiertage" value="{{ value }}"{% if value in v.regionale_feiertage %} checked{% endif %}>
+        <span class="admin-check-text">
+          <span class="admin-check-label">{{ label }}</span>
+          <span class="field-hint">{{ regional_hints.get(value, "") }}</span>
+        </span>
+      </label>
+      {% endfor %}
+      {{ sf.error(errors, "regionale_feiertage") }}
+      {{ sf.grund(errors, "feiertage", has_closed_months) }}
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- Person / Schule / Klassen #}
+  <section class="card" id="listen" aria-labelledby="listen-title">
+    <h2 class="card-title" id="listen-title">Person, Schule, Klassen und Fächer</h2>
+    <form method="post" action="/einstellungen/profil" class="stack-sm" id="profil">
+      {{ sf.csrf(request) }}
+      {{ sf.input(fields, v, errors, "name") }}
+      <div class="form-row">
+        {{ sf.input(fields, v, errors, "schule") }}
+        {{ sf.input(fields, v, errors, "schulart") }}
+      </div>
+      <div class="form-actions"><button type="submit" class="btn btn-secondary">Speichern</button></div>
+    </form>
+    <hr>
+    <form method="post" action="/einstellungen/listen" class="stack-sm">
+      {{ sf.csrf(request) }}
+      <div class="form-row">
+        {{ sf.textarea(fields, v, errors, "klassen", 6) }}
+        {{ sf.textarea(fields, v, errors, "faecher", 6) }}
+      </div>
+      <p class="field-hint">Klassen nur als Kürzel (z. B. 3b) – keine Namen von Kindern.</p>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- Zeitraster #}
+  <section class="card" id="zeitraster" aria-labelledby="zr-title">
+    <h2 class="card-title" id="zr-title">Zeitraster der Schule</h2>
+    <p class="admin-help">Beginn und Ende der Unterrichtsstunden. Der Stundenplan übernimmt daraus die Zeiten;
+      Lücken zwischen zwei Stunden sind Pausen. Für Frühaufsicht o. Ä. eignet sich die Nummer 0.</p>
+    <form method="post" action="/einstellungen/zeitraster" class="stack-sm mt-3" data-zeitraster>
+      {{ sf.csrf(request) }}
+      <div class="zr-list" data-zr-list>
+        {% for row in zeitraster_rows %}
+        <div class="zr-item" data-zr-row>
+          <div class="zr-line1">
+            <div class="field"><label for="zr-no-{{ loop.index }}">Nr.</label>
+              <input id="zr-no-{{ loop.index }}" name="zr_slot_no" type="number" min="0" max="99" inputmode="numeric" value="{{ row.slot_no }}"></div>
+            <div class="field"><label for="zr-label-{{ loop.index }}">Bezeichnung</label>
+              <input id="zr-label-{{ loop.index }}" name="zr_label" maxlength="50" value="{{ row.label or '' }}" placeholder="z. B. {{ row.slot_no or next_slot_no }}. Stunde"></div>
+          </div>
+          <div class="zr-line2">
+            <div class="field"><label for="zr-start-{{ loop.index }}">Beginn</label>
+              <input id="zr-start-{{ loop.index }}" name="zr_start" type="time" value="{{ row.start }}"></div>
+            <div class="field"><label for="zr-end-{{ loop.index }}">Ende</label>
+              <input id="zr-end-{{ loop.index }}" name="zr_end" type="time" value="{{ row.end }}"></div>
+            <button type="button" class="btn btn-ghost btn-icon" data-zr-remove aria-label="Zeile leeren">{{ icon("x", 18) }}</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {{ sf.error(errors, "zeitraster") }}
+      <p class="field-hint">Leere Zeilen werden ignoriert. Zum Entfernen einer Stunde die Zeile leeren.</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" data-zr-add hidden>{{ icon("plus", 18) }} Weitere Stunde</button>
+        <button type="submit" class="btn btn-primary">Zeitraster speichern</button>
+      </div>
+    </form>
+    <p class="text-small mt-3">Bestehende Stundenpläne behalten ihre Zeiten; im <a href="/stundenplan">Stundenplan</a> kannst du sie aus dem Zeitraster neu übernehmen.</p>
+  </section>
+
+  {# ---------------------------------------------------------------- Kategorien #}
+  <nav class="card card-flush" id="kategorien" aria-label="Kategorien">
+    <a class="menu-item" href="/einstellungen/kategorien">
+      <span class="menu-icon">{{ icon("list", 22) }}</span>
+      <span class="menu-text">
+        <span class="menu-label">Kategorien</span>
+        <span class="menu-hint">{{ category_count }} aktive Hauptkategorien · {{ subcategory_count }} Unterkategorien · umbenennen, Farbe, Reihenfolge</span>
+      </span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+  </nav>
+
+  {# ---------------------------------------------------------------- Sensor-API #}
+  <section class="card stack-sm" id="sensor" aria-labelledby="sensor-title">
+    <h2 class="card-title" id="sensor-title">Sensor-API (Home Assistant)</h2>
+    <p class="admin-help">Über <code>{{ sensors_url }}</code> kann z. B. Home Assistant Saldo, heutige Ist-Zeit,
+      Wochenstunden, EU-Mittel und den Timer-Status abfragen. Der Zugriff ist nur mit Token möglich;
+      ohne Token ist der Endpunkt abgeschaltet.</p>
+    {% if token_configured %}
+    <p class="cluster"><span class="badge badge-success">{{ icon("check", 14) }} Token eingerichtet</span>
+      <span class="text-small text-muted">Das Token selbst wird nicht gespeichert und kann nicht erneut angezeigt werden.</span></p>
+    <div class="btn-group">
+      <form method="post" action="/einstellungen/api-token" data-confirm="Neues Token erzeugen? Das alte Token wird sofort ungültig.">
+        {{ sf.csrf(request) }}
+        <button type="submit" class="btn btn-secondary">Token erneuern</button>
+      </form>
+      <form method="post" action="/einstellungen/api-token/loeschen" data-confirm="Token löschen? Home Assistant kann danach keine Werte mehr abrufen.">
+        {{ sf.csrf(request) }}
+        <button type="submit" class="btn btn-ghost text-danger">Token löschen</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="text-small"><span class="badge badge-outline">kein Token</span> Der Endpunkt ist abgeschaltet.</p>
+    <form method="post" action="/einstellungen/api-token">
+      {{ sf.csrf(request) }}
+      <button type="submit" class="btn btn-primary">Token erzeugen</button>
+    </form>
+    {% endif %}
+    <details class="admin-details">
+      <summary>Beispiel für Home Assistant</summary>
+      <pre class="code-block mt-2">{{ sf.ha_yaml(sensors_url) }}</pre>
+    </details>
+  </section>
+
+  {# ---------------------------------------------------------------- Daten / Datenschutz / Über #}
+  <section class="card stack-sm" id="daten" aria-labelledby="daten-title">
+    <h2 class="card-title" id="daten-title">Daten und Datenschutz</h2>
+    <ul class="stack-sm admin-help">
+      <li>Alle Daten liegen ausschließlich auf deinem Server (SQLite unter <code>/data</code>); die App lädt nichts aus dem Internet nach.</li>
+      <li>Notizen bitte ohne Namen von Kindern oder Eltern – z. B. „Gespräch Übertritt, 4a“.</li>
+      <li>Exporte und Backups enthalten nur deine eigenen Daten. Es gibt keinen App-Login: Von außen schützt
+        Cloudflare Access, im Heimnetz ist die App ohne Anmeldung erreichbar.</li>
+      <li>Automatisches Backup nach <code>/data/backups</code> (Standard: täglich 00:30 Uhr, 14 Tage aufbewahrt).</li>
+    </ul>
+  </section>
+  <nav class="card card-flush" aria-label="Daten verwalten">
+    <a class="menu-item" href="/export">
+      <span class="menu-icon">{{ icon("file", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Export &amp; Backup</span><span class="menu-hint">CSV, JSON, ICS, Backup jetzt erstellen</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+    <a class="menu-item" href="/import">
+      <span class="menu-icon">{{ icon("upload", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Import</span><span class="menu-hint">Bestehende Aufzeichnungen übernehmen</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+    <a class="menu-item" href="/kalender">
+      <span class="menu-icon">{{ icon("calendar", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Kalender</span><span class="menu-hint">Schuljahr, Ferien, Feiertage, Urlaub</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+  </nav>
+
+  <p class="text-small text-muted text-center">Deputat {{ app_version }} · Rechenregeln v{{ rules_version }}</p>
+</div>
+{% endblock %}

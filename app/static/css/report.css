@@ -1,0 +1,208 @@
+/* Deputat – Berichte (Monats-/Jahresbericht), Konzept §10.2/§10.3.
+   This file is inlined into every report (stored reports must be self-contained) and therefore
+   must not reference any other asset. Paper first: A4 portrait, light colours, page breaks. */
+
+:root {
+  color-scheme: light;
+  --r-text: #15191f;
+  --r-muted: #555e6b;
+  --r-faint: #8a93a0;
+  --r-border: #c9cfd8;
+  --r-border-soft: #e3e7ec;
+  --r-head: #eef1f5;
+  --r-accent: #2453c9;
+  --r-pos: #18794e;
+  --r-neg: #b3261e;
+  --r-warn: #9a5b00;
+  --r-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { background: #ffffff; }
+
+body.report {
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  max-width: 1120px;
+  background: #ffffff;
+  color: var(--r-text);
+  font: 10pt/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+h1 { font-size: 17pt; margin: 0 0 2px; letter-spacing: -0.01em; }
+h2 {
+  font-size: 12pt;
+  margin: 22px 0 8px;
+  padding-bottom: 3px;
+  border-bottom: 1.5px solid var(--r-text);
+  break-after: avoid;
+  page-break-after: avoid;
+}
+h3 { font-size: 10.5pt; margin: 14px 0 6px; break-after: avoid; page-break-after: avoid; }
+p { margin: 4px 0 8px; }
+
+.muted { color: var(--r-muted); }
+.small { font-size: 8.5pt; }
+.mono, .hash { font-family: var(--r-mono); }
+.hash { word-break: break-all; font-size: 8.5pt; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pos { color: var(--r-pos); }
+.neg { color: var(--r-neg); }
+.nowrap { white-space: nowrap; }
+
+/* ------------------------------------------------------------------ header */
+.report-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
+  border-bottom: 2.5px solid var(--r-text);
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+}
+.report-head .title { min-width: 0; }
+.report-head .subtitle { color: var(--r-muted); font-size: 10.5pt; }
+.meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 12px;
+  font-size: 9pt;
+  margin: 0;
+}
+.meta dt { color: var(--r-muted); }
+.meta dd { margin: 0; min-width: 0; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 8.5pt;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge.ok { color: var(--r-pos); }
+.badge.warn { color: var(--r-warn); }
+.badge.draft { color: var(--r-neg); }
+
+.notice {
+  border: 1px solid var(--r-border);
+  border-left: 4px solid var(--r-warn);
+  background: #fdf8ee;
+  padding: 6px 10px;
+  margin: 10px 0;
+  font-size: 9pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.notice.draft { border-left-color: var(--r-neg); background: #fdf0ef; }
+.notice ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* ------------------------------------------------------------------ key figures */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+.kpi {
+  border: 1px solid var(--r-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.kpi .label { color: var(--r-muted); font-size: 8.5pt; }
+.kpi .value { font-size: 13pt; font-weight: 650; font-variant-numeric: tabular-nums; }
+.kpi .sub { color: var(--r-muted); font-size: 8pt; }
+
+/* ------------------------------------------------------------------ tables */
+.table-wrap { width: 100%; overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+  margin: 4px 0 10px;
+}
+thead { display: table-header-group; }
+tfoot { display: table-row-group; }
+th, td {
+  border-bottom: 1px solid var(--r-border-soft);
+  padding: 3px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--r-head);
+  border-bottom: 1px solid var(--r-border);
+  font-weight: 600;
+  white-space: nowrap;
+}
+tr { break-inside: avoid; page-break-inside: avoid; }
+tfoot td, tr.total td { font-weight: 650; border-top: 1.5px solid var(--r-text); }
+tr.deleted td { color: var(--r-faint); text-decoration: line-through; }
+tr.deleted td.keep { text-decoration: none; }
+td .note { display: block; color: var(--r-muted); font-size: 8pt; }
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: baseline;
+}
+.changes { margin: 0; padding-left: 14px; }
+.changes li { margin: 0; }
+
+/* ------------------------------------------------------------------ chart */
+figure.chart { margin: 8px 0 12px; break-inside: avoid; page-break-inside: avoid; }
+figure.chart svg { width: 100%; height: auto; display: block; }
+figure.chart figcaption { color: var(--r-muted); font-size: 8.5pt; margin-top: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 8.5pt; color: var(--r-muted); }
+.legend span::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  margin-right: 5px;
+  vertical-align: baseline;
+  background: var(--lg, #999);
+}
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 20px; }
+
+/* ------------------------------------------------------------------ footer */
+.report-foot {
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 1.5px solid var(--r-text);
+  font-size: 8.5pt;
+  color: var(--r-muted);
+}
+.report-foot .hash { color: var(--r-text); }
+
+.page-break { break-before: page; page-break-before: always; }
+
+/* ------------------------------------------------------------------ print */
+@page {
+  size: A4 portrait;
+  margin: 14mm 11mm 16mm;
+}
+
+@media print {
+  body.report { padding: 0; max-width: none; font-size: 9pt; }
+  .table-wrap { overflow: visible; }
+  table { font-size: 7.5pt; }
+  th, td { padding: 2px 3px; }
+  a { color: inherit; text-decoration: none; }
+  .no-print { display: none !important; }
+}
+
+@media (max-width: 600px) {
+  body.report { padding: 16px 16px 32px; }
+  .report-head { display: block; }
+  .meta { margin-top: 8px; }
+}

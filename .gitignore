@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.hypothesis/
+/data/
+.env
+node_modules/
+test-results/
+
+# Not public: domain concept and internal ops notes (kept locally only)
+KONZEPT_Deputat_Arbeitszeitkonto_Lehrkraft.md
+docs/DEPLOY_REQUIREMENTS.md

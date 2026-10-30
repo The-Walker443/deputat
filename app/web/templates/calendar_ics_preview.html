@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/calendar_macros.html" as cm %}
+{# ICS import, step 2: preview of the parsed events; nothing is written until "Importieren". #}
+{% block head_scripts %}{{ cm.head_assets() }}{% endblock %}
+
+
+
+{% block content %}
+{% set status_labels = {
+  "neu": ("neu", "badge-success"),
+  "vorhanden": ("bereits vorhanden", "badge-outline"),
+  "ueberschneidung": ("Überschneidung", "badge-warn"),
+  "ausserhalb": ("außerhalb", "badge-outline"),
+  "feiertag": ("nur Feiertage", "badge-outline"),
+  "doppelt": ("doppelt", "badge-warn"),
+} %}
+<div class="stack admin">
+  <p><a href="{{ back }}" class="text-small admin-back">← zurück</a></p>
+
+  {% if is_example %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Beispieldatei!</strong> Diese Datei enthält nur Beispieldaten. Bitte nicht ungeprüft
+      übernehmen, sondern jeden Termin mit den amtlichen Ferienterminen des Bayerischen Kultusministeriums vergleichen.</span>
+  </div>
+  {% endif %}
+
+  <section class="card stack-sm" aria-labelledby="ics-title">
+    <h2 class="card-title" id="ics-title">Vorschau: {{ filename or "ICS-Datei" }}</h2>
+    <p class="admin-help">Für „{{ period.label }}“ ({{ period.start|date_de }}–{{ period.end|date_de }}).
+      Wähle die Termine aus, die als Ferien übernommen werden sollen. Bitte die Daten vor dem Import prüfen.</p>
+    {% for w in preview.warnings %}
+    <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ w }}</span></p>
+    {% endfor %}
+
+    {% if preview.items %}
+    <form method="post" action="/kalender/ics/import" class="stack-sm">
+      {{ cm.csrf(request) }}
+      <input type="hidden" name="periode" value="{{ period.id }}">
+      <input type="hidden" name="inhalt" value="{{ content_b64 }}">
+      {% if wizard %}<input type="hidden" name="wizard" value="1">{% endif %}
+      {% if replace %}<input type="hidden" name="ersetzen" value="1">{% endif %}
+      {% if quelle_url %}<input type="hidden" name="quelle_url" value="{{ quelle_url }}">{% endif %}
+
+      <div class="cluster">
+        <button type="button" class="btn btn-ghost btn-sm" data-check-all="auswahl" data-value="1">Alle wählen</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-check-all="auswahl" data-value="0">Keine</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table table-compact ics-table">
+          <thead><tr><th><span class="visually-hidden">Auswahl</span></th><th>Termin</th></tr></thead>
+          <tbody>
+            {% for item in preview.items %}
+            {% set st = status_labels.get(item.status, (item.status, "badge-outline")) %}
+            <tr class="ics-row-{{ item.status }}">
+              <td>
+                <input type="checkbox" name="auswahl" value="{{ item.index }}" id="ics-{{ item.index }}"
+                       aria-label="{{ item.name }} übernehmen"{% if item.vorausgewaehlt %} checked{% endif %}{% if not item.importierbar %} disabled{% endif %}>
+              </td>
+              <td>
+                <label for="ics-{{ item.index }}" class="text-strong">{{ item.name }}</label>
+                <div class="text-small num">{{ item.start|weekday_de }} {{ item.start|date_de }}{% if item.end != item.start %} – {{ item.end|weekday_de }} {{ item.end|date_de }}{% endif %}</div>
+                <div class="cluster mt-2">
+                  <span class="badge {{ st[1] }}">{{ st[0] }}</span>
+                  <span class="text-xs text-muted">{{ ferien_kind_labels.get(item.kind, item.kind) }} · {{ item.tage }} Tag(e) · Werktage: {{ item.werktage }}</span>
+                </div>
+                {% if item.hinweis %}<div class="text-xs text-muted mt-2">{{ item.hinweis }}</div>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <label class="admin-check-row">
+        <input type="checkbox" name="geprueft" value="1" required>
+        <span class="admin-check-text">
+          <span class="admin-check-label">Ich habe die Termine mit den amtlichen Ferienterminen verglichen.</span>
+          <span class="field-hint">Quelle z. B. Bayerisches Staatsministerium für Unterricht und Kultus (km.bayern.de).</span>
+        </span>
+      </label>
+
+      <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ back }}">Abbrechen</a>
+        <button type="submit" class="btn btn-primary">{{ icon("check", 18) }} Ausgewählte importieren</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-small text-muted">Keine Termine gefunden.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

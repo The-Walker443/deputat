@@ -1,0 +1,7 @@
+{# In-app reminders (Konzept §3.2 Nr. 15), included by base.html. Loaded via HTMX from /hinweise
+   (app/web/documents.py, app/services/reminders.py); dismissal per browser session in js/reminders.js. #}
+<link rel="stylesheet" href="{{ static_url('css/reminders.css') }}">
+<div id="reminders" class="reminders no-print" aria-live="polite"
+     hx-get="/hinweise?seite={{ request.url.path|urlencode }}" hx-trigger="load, deputat-refresh from:body"
+     hx-swap="innerHTML"></div>
+<script src="{{ static_url('js/reminders.js') }}" defer></script>

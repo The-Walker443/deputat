@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Jahr" / Schuljahr (Konzept §9.3). Rendered by app/web/year.py. Donut + histogram are drawn by
+   static/js/charts.js from the data-chart attributes; the heatmap is a server-rendered CSS grid. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/account.css') }}">
+  <script src="{{ static_url('vendor/chart.umd.min.js') }}" defer></script>
+  <script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% if res.state == "no_period" %}
+  {% include "partials/account_no_period.html" %}
+{% elif not res.ok %}
+<div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ res.message }}</span></div>
+{% else %}
+<div class="yr stack-lg" data-year>
+  <div class="yr-head">
+    <p class="text-muted text-small">Schuljahr {{ ctx.period.label }} · {{ ctx.period.start|date_de }}–{{ ctx.period.end|date_de }}
+      · Stand {{ as_of|date_de }}</p>
+    {% if periods|length > 1 %}
+    <nav class="yr-periods" aria-label="Schuljahr wählen">
+      {% for p in periods %}
+      <a class="chip chip-sm{% if p.active %} is-active{% endif %}" href="{{ p.href }}"{% if p.active %} aria-current="page"{% endif %}>{{ p.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </div>
+
+  {# ---------------------------------------------------------------- KPIs #}
+  <section aria-labelledby="yr-kpi-title">
+    <h2 class="section-title" id="yr-kpi-title">Überblick</h2>
+    {% set k = kpis %}
+    <div class="kpi-grid" data-year-kpis>
+      <a class="kpi kpi-link{% if k.saldo > 0 %} is-positive{% elif k.saldo < 0 %} is-negative{% endif %}" href="/konto">
+        <span class="kpi-label">Saldo</span>
+        <span class="kpi-value num">{{ k.saldo|hm(plus=True) }}</span>
+        <span class="kpi-sub">Prognose Ende {{ k.prognose|hm(plus=True) }}</span>
+      </a>
+      <div class="kpi">
+        <span class="kpi-label">Ist bisher</span>
+        <span class="kpi-value num">{{ k.ist_bisher|hm }}</span>
+        <span class="kpi-sub">Soll {{ k.soll_bisher|hm }} · J<sub>soll</sub> {{ k.j_soll|hm }}</span>
+      </div>
+      <div class="kpi yr-kpi-unterricht">
+        <span class="kpi-label">Unterrichtsanteil</span>
+        <span class="kpi-value num">{{ cats.unterricht_share_text }}</span>
+        <span class="kpi-sub">{{ cats.unterricht|hm }} h Unterricht</span>
+        {% if teach %}
+        <span class="kpi-sub" data-teaching>erfasst {{ teach.recorded_text }} UStd · erwartet ≈ {{ teach.expected_text }} UStd
+          ({{ teach.upz_text }} × {{ teach.weeks_text }} Schulwochen)</span>
+        <span class="kpi-sub">Altersermäßigung {{ teach.ae_text }} · Anrechnung {{ teach.anrechnung_text }}{% if teach.anrechnung_grund %} ({{ teach.anrechnung_grund }}){% endif %} Std./Woche</span>
+        {% if teach.anrechnung %}<span class="kpi-sub">Funktionen &amp; Sonderaufgaben erfasst {{ teach.fs_seconds|hm }} h · Anrechnung bisher ≈ {{ teach.fs_expected_text }} UStd</span>{% endif %}
+        {% endif %}
+      </div>
+      <div class="kpi{% if k.ueber_48 %} acct-warn{% endif %}">
+        <span class="kpi-label">Schulwochen &gt; 48 h</span>
+        <span class="kpi-value num" data-ueber48>{{ k.ueber_48 }}</span>
+        <span class="kpi-sub">{% if k.mean_week %}Ø {{ k.mean_week }} h je Schulwoche{% else %}noch keine ganze Schulwoche{% endif %}</span>
+      </div>
+    </div>
+  </section>
+
+  {# ---------------------------------------------------------------- heatmap #}
+  <section class="card" aria-labelledby="yr-heat-title">
+    <h2 class="card-title" id="yr-heat-title">Alle Tage</h2>
+    <p class="text-small text-muted mb-3">Erfasste Stunden je Tag; Tippen öffnet die Woche.</p>
+    <div class="yr-heat-wrap" data-heatmap>
+      <div class="yr-heat" role="img" aria-label="Heatmap der erfassten Stunden aller Tage des Schuljahrs {{ ctx.period.label }}; die Monatsliste unten enthält dieselben Summen.">
+        <div class="yr-heat-col yr-heat-wd" aria-hidden="true">
+          <span class="yr-heat-month"></span>
+          {% for wd in heat.weekday_labels %}<span class="yr-heat-wdl">{{ wd }}</span>{% endfor %}
+        </div>
+        {% for wk in heat.weeks %}
+        <div class="yr-heat-col{% if wk.ref == heat.today_ref %} is-current{% endif %}" aria-hidden="true">
+          <span class="yr-heat-month">{{ wk.month }}</span>
+          {% for c in wk.cells %}
+          {% if c.cls == "hm-out" %}<span class="hm hm-out"></span>{% else %}<a class="hm {{ c.cls }}" href="/woche/{{ wk.ref }}#tag-{{ c.date.isoformat() }}" title="{{ c.title }}" tabindex="-1"></a>{% endif %}
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <ul class="yr-legend" aria-label="Legende">
+      <li><span class="hm hm-l0"></span>nichts erfasst</li>
+      {% for l in heat.legend_levels %}<li><span class="hm {{ l.cls }}"></span>{{ l.label }}</li>{% endfor %}
+      <li><span class="hm hm-ferien"></span>Ferien / unterrichtsfrei</li>
+      <li><span class="hm hm-urlaub"></span>Urlaub</li>
+      <li><span class="hm hm-krank"></span>Krank</li>
+      <li><span class="hm hm-feiertag"></span>Feiertag</li>
+      <li><span class="hm hm-we"></span>Wochenende</li>
+      <li><span class="hm hm-l3 is-frei"></span>Arbeit an freiem Tag</li>
+    </ul>
+  </section>
+
+  {# ---------------------------------------------------------------- categories #}
+  <section class="card" aria-labelledby="yr-cat-title">
+    <h2 class="card-title" id="yr-cat-title">Kategorien</h2>
+    {% if not cats.rows %}
+    <p class="text-small text-muted">Noch keine Einträge in diesem Schuljahr.</p>
+    {% else %}
+    <div class="yr-cat">
+      <div class="chart-box yr-donut" data-donut-chart data-chart='{{ cats.chart|tojson }}'>
+        <canvas role="img" aria-label="Ringdiagramm: Verteilung der erfassten Zeit auf Kategorien"></canvas>
+        <p class="chart-fallback text-small text-muted" data-chart-fallback>Diagramm wird geladen …</p>
+        <div class="yr-donut-center" aria-hidden="true">
+          <span class="yr-donut-value">{{ cats.unterricht_share_text }}</span>
+          <span class="text-xs text-muted">Unterricht</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table table-compact yr-cat-table">
+          <thead><tr><th scope="col">Kategorie</th><th scope="col" class="num">Stunden</th><th scope="col" class="num">Anteil</th></tr></thead>
+          <tbody>
+            {% for r in cats.rows %}
+            <tr class="{% if r.is_unterricht %}is-unterricht{% endif %}">
+              <td><span class="yr-cat-name"><span class="swatch" style="--c: {{ r.color }}"></span><span>{{ r.name }}{% if r.is_unterricht and r.name != "Unterricht" %} <span class="badge badge-primary">Unterricht</span>{% endif %}</span></span></td>
+              <td class="num">{{ r.seconds|hm }}</td>
+              <td class="num">{{ r.share_text }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="yr-unterricht-row"><th scope="row">Unterrichtsanteil</th><td class="num">{{ cats.unterricht|hm }}</td><td class="num text-strong">{{ cats.unterricht_share_text }}</td></tr>
+            <tr><th scope="row">Summe</th><td class="num">{{ cats.total|hm }}</td><td class="num">100 %</td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  {# ---------------------------------------------------------------- histogram #}
+  <section class="card" aria-labelledby="yr-hist-title">
+    <div class="row-between">
+      <h2 class="card-title" id="yr-hist-title">Schulwochen</h2>
+      <span class="badge{% if hist.ueber_48 %} badge-danger{% else %} badge-outline{% endif %}" data-hist-ueber48>{{ hist.ueber_48 }} × über 48 h</span>
+    </div>
+    <p class="text-small text-muted mb-3">Verteilung der erfassten Stunden je abgeschlossener Schulwoche ({{ hist.weeks }} Woche{{ "n" if hist.weeks != 1 }}{% if hist.max %}, Maximum {{ hist.max }} h{% endif %}).
+      Linien bei 40 h (Referenz) und 48 h (EU-Höchstgrenze); Wochen ohne Einträge zählen nicht.</p>
+    <div class="chart-box yr-hist" data-histogram-chart data-chart='{{ hist.chart|tojson }}'>
+      <canvas role="img" aria-label="Histogramm der Wochenstunden in Schulwochen mit Markierungen bei 40 und 48 Stunden"></canvas>
+      <p class="chart-fallback text-small text-muted" data-chart-fallback>Diagramm wird geladen …</p>
+    </div>
+    <dl class="dl mt-3 yr-hist-dl">
+      <dt>Schulwochen &gt; 40 h</dt><dd>{{ hist.ueber_40 }}</dd>
+      <dt>Schulwochen &gt; 48 h</dt><dd class="text-strong">{{ hist.ueber_48 }}</dd>
+      {% if hist.mean %}<dt>Mittel je Schulwoche</dt><dd>{{ hist.mean }} h</dd>{% endif %}
+    </dl>
+    {% if hist.ueber_48_laufend %}
+    <p class="text-xs text-muted mt-2" data-ueber48-laufend>Die laufende Woche liegt schon über 48 h und zählt mit; im Diagramm erscheint sie erst, wenn sie vorbei ist.</p>
+    {% endif %}
+    {% if hist.benchmarks %}
+    <label class="check mt-3 yr-bm-label">
+      <input type="checkbox" data-benchmark-toggle>
+      <span class="text-small">Studienwerte einblenden <span class="text-muted">({{ hist.benchmark_label }})</span></span>
+    </label>
+    <ul class="yr-bm-list text-xs text-muted">
+      {% for b in hist.benchmarks %}
+      <li>{{ b.label }}: {{ b.hours_text }} h/Woche · {{ b.source }}{% if b.year %} {{ b.year }}{% endif %}{% if b.kind %} · {{ b.kind }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {# ---------------------------------------------------------------- months #}
+  <section aria-labelledby="yr-months-title">
+    <h2 class="section-title" id="yr-months-title">Monate</h2>
+    <div class="table-wrap">
+      <table class="table table-stack yr-months" data-months>
+        <thead>
+          <tr>
+            <th scope="col">Monat</th>
+            <th scope="col" class="num">Soll</th>
+            <th scope="col" class="num">Ist</th>
+            <th scope="col" class="num">Saldo</th>
+            <th scope="col" class="num">Mehrarbeit UStd</th>
+            <th scope="col">Abschluss</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in months %}
+          <tr class="{% if m.future %}is-future{% endif %}{% if m.laufend %} is-current{% endif %}" data-month="{{ m.ym }}">
+            <td data-label="Monat"><a class="text-strong" href="/monate/{{ m.ym }}">{{ m.label }}</a></td>
+            {% if m.future %}
+            <td data-label="Soll" class="num text-muted">–</td>
+            <td data-label="Ist" class="num text-muted">–</td>
+            <td data-label="Saldo" class="num text-muted">–</td>
+            <td data-label="Mehrarbeit UStd" class="num text-muted">–</td>
+            {% else %}
+            <td data-label="Soll" class="num">{{ m.soll|hm }}</td>
+            <td data-label="Ist" class="num">{{ m.ist|hm }}</td>
+            <td data-label="Saldo" class="num text-strong{% if m.saldo > 0 %} is-positive{% elif m.saldo < 0 %} is-negative{% endif %}">{{ m.saldo|hm(plus=True) }}</td>
+            <td data-label="Mehrarbeit UStd" class="num">{{ m.ustd_text }}{% if m.ausgleichsfaehig %} <span class="badge badge-warn" title="über der Bagatellgrenze von 3 UStd">ausgleichsfähig</span>{% endif %}</td>
+            {% endif %}
+            <td data-label="Abschluss">{% if m.future %}<span class="text-muted">–</span>{% else %}<a class="badge {{ m.status_badge }}" href="/monate/{{ m.ym }}">{{ m.status_label }}</a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-muted mt-2">Saldo = Ist − Soll des Monats bis heute. Mehrarbeit = Unterrichtsstunden mit Vertretung angeordnet/genehmigt
+      (Art. 87 BayBG). <a href="/berichte/jahr">Jahresbericht</a></p>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

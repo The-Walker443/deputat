@@ -1,0 +1,130 @@
+{# Form-field macros of the Einstellungen screen (app/web/settings.py). ``fields`` = FIELDS metadata,
+   ``v`` = current display values, ``errors`` = {field: message}. #}
+
+{% macro head_assets() -%}
+  <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+  <script src="{{ static_url('js/admin.js') }}" defer></script>
+  <script src="{{ static_url('js/settings.js') }}" defer></script>
+{%- endmacro %}
+
+{% macro csrf(request) -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+{%- endmacro %}
+
+{% macro error(errors, name) -%}
+{% if errors.get(name) %}<span class="field-error" id="err-{{ name }}" role="alert">{{ errors[name] }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro aria(errors, name) -%}
+{% if errors.get(name) %} aria-invalid="true" aria-describedby="err-{{ name }}"{% endif %}
+{%- endmacro %}
+
+{# Text / number / date / TT.MM. / select input with label, unit and help text. #}
+{% macro input(fields, v, errors, name, extra="") %}
+{% set m = fields[name] %}
+<div class="field">
+  <label for="f-{{ name }}">{{ m.label }}{% if m.unit %} <span class="text-muted">({{ m.unit }})</span>{% endif %}</label>
+  {% if m.kind == "select" %}
+  <select id="f-{{ name }}" name="{{ name }}"{{ aria(errors, name) }}>
+    {% for value, label in m.choices %}<option value="{{ value }}"{% if v[name] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  {% elif m.kind in ("int", "float") %}
+  <input id="f-{{ name }}" name="{{ name }}" type="number" value="{{ v[name] }}" step="{{ m.step }}"
+         {% if m.min is not none %}min="{{ m.min|int if m.min == m.min|int else m.min }}"{% endif %}
+         {% if m.max is not none %}max="{{ m.max|int if m.max == m.max|int else m.max }}"{% endif %}
+         inputmode="{{ 'numeric' if m.kind == 'int' else 'decimal' }}" required{{ aria(errors, name) }} {{ extra|safe }}>
+  {% elif m.kind == "date" %}
+  <input id="f-{{ name }}" name="{{ name }}" type="date" value="{{ v[name] }}"{{ aria(errors, name) }}>
+  {% elif m.kind == "md" %}
+  <input id="f-{{ name }}" name="{{ name }}" value="{{ v[name] }}" maxlength="6" placeholder="01.08." inputmode="decimal"
+         pattern="\d{1,2}\.\d{1,2}\.?|\d{2}-\d{2}" required{{ aria(errors, name) }}>
+  {% else %}
+  <input id="f-{{ name }}" name="{{ name }}" value="{{ v[name] }}" maxlength="200"{% if not m.optional %} required{% endif %}{{ aria(errors, name) }}>
+  {% endif %}
+  {% if m.help %}<span class="field-hint">{{ m.help }}</span>{% endif %}
+  {{ error(errors, name) }}
+</div>
+{% endmacro %}
+
+{# Checkbox with label and help text (touch-friendly row). #}
+{% macro checkbox(fields, v, errors, name, extra="") %}
+{% set m = fields[name] %}
+<label class="admin-check-row">
+  <input type="checkbox" name="{{ name }}" value="1"{% if v[name] %} checked{% endif %} {{ extra|safe }}>
+  <span class="admin-check-text">
+    <span class="admin-check-label">{{ m.label }}</span>
+    {% if m.help %}<span class="field-hint">{{ m.help }}</span>{% endif %}
+    {{ error(errors, name) }}
+  </span>
+</label>
+{% endmacro %}
+
+{% macro radios(fields, v, errors, name) %}
+{% set m = fields[name] %}
+<fieldset class="fieldset stack-sm">
+  <legend>{{ m.label }}</legend>
+  {% for value, label in m.choices %}
+  <label class="admin-check-row">
+    <input type="radio" name="{{ name }}" value="{{ value }}"{% if v[name] == value %} checked{% endif %}>
+    <span class="admin-check-text"><span class="admin-check-label">{{ label }}</span></span>
+  </label>
+  {% endfor %}
+  {% if m.help %}<span class="field-hint">{{ m.help }}</span>{% endif %}
+  {{ error(errors, name) }}
+</fieldset>
+{% endmacro %}
+
+{% macro textarea(fields, v, errors, name, rows=5) %}
+{% set m = fields[name] %}
+<div class="field">
+  <label for="f-{{ name }}">{{ m.label }}</label>
+  <textarea id="f-{{ name }}" name="{{ name }}" rows="{{ rows }}"{{ aria(errors, name) }}>{{ v[name] }}</textarea>
+  {% if m.help %}<span class="field-hint">{{ m.help }}</span>{% endif %}
+  {{ error(errors, name) }}
+</div>
+{% endmacro %}
+
+{# Home Assistant example (RESTful integration). ``token`` = plaintext right after creation, else placeholder. #}
+{% macro ha_yaml(sensors_url, token=None) -%}
+# configuration.yaml
+rest:
+  - resource: {{ sensors_url }}
+    headers:
+      Authorization: !secret deputat_token
+    scan_interval: 300
+    sensor:
+      - name: "Deputat Saldo"
+        unique_id: deputat_saldo
+        value_template: "{% raw %}{{ value_json.saldo_h }}{% endraw %}"
+        unit_of_measurement: "h"
+      - name: "Deputat heute"
+        unique_id: deputat_heute
+        value_template: "{% raw %}{{ value_json.heute_ist_h }}{% endraw %}"
+        unit_of_measurement: "h"
+      - name: "Deputat Woche"
+        unique_id: deputat_woche
+        value_template: "{% raw %}{{ value_json.woche_ist_h }}{% endraw %}"
+        unit_of_measurement: "h"
+      - name: "Deputat EU-Mittel"
+        unique_id: deputat_eu_mittel
+        value_template: "{% raw %}{{ value_json.eu_mittel_h }}{% endraw %}"
+        unit_of_measurement: "h"
+    binary_sensor:
+      - name: "Deputat Timer läuft"
+        unique_id: deputat_timer
+        value_template: "{% raw %}{{ value_json.timer_running }}{% endraw %}"
+
+# secrets.yaml
+deputat_token: "Bearer {{ token if token else '<DEIN_TOKEN>' }}"
+{%- endmacro %}
+
+{# Reason for changes that alter closed months (shown when closed months exist or the save was refused). #}
+{% macro grund(errors, section, has_closed) %}
+{% if has_closed or errors.get("_locked") == section %}
+<div class="field">
+  <label for="f-grund-{{ section }}">Begründung <span class="text-muted">(nur nötig, wenn sich abgeschlossene Monate ändern)</span></label>
+  <input id="f-grund-{{ section }}" name="grund" maxlength="500"{% if errors.get("_locked") == section %} required aria-invalid="true" aria-describedby="err-grund-{{ section }}"{% endif %}>
+  {% if errors.get("_locked") == section %}<span class="field-error" id="err-grund-{{ section }}" role="alert">{{ errors.grund }}</span>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}

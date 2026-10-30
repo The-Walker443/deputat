@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block head_scripts %}<script src="{{ static_url('js/entries.js') }}" defer></script>{% endblock %}
+{% block topbar_left %}
+<a class="btn btn-ghost btn-icon btn-sm" href="{{ back_url }}" aria-label="Zurück">{{ icon("chevron-left", 20) }}</a>
+<h1 class="topbar-title">Neuer Eintrag</h1>
+{% endblock %}
+{% block content %}
+<form class="entry-form card stack" method="post" action="/eintraege/neu" novalidate
+      data-entry-form data-closed-months='{{ closed_months|tojson }}'
+      data-location-rule='{{ location_rule|tojson }}'>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+  {% if form.next %}<input type="hidden" name="next" value="{{ form.next }}">{% endif %}
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">
+    {{ icon("alert", 18) }}<span class="banner-body"><strong>Nicht gespeichert:</strong> {{ error }}</span>
+  </div>
+  {% endif %}
+
+  {% include "partials/entries_fields.html" %}
+
+  <div class="banner banner-info" data-late-info{% if late %} hidden{% endif %}>
+    {{ icon("info", 18) }}
+    <span class="banner-body">Einträge, die mehr als 48 h nach dem Tag angelegt werden, erhalten automatisch das
+      Kennzeichen <strong>„nachträglich“</strong> (sichtbar, nicht entfernbar).</span>
+  </div>
+  <div class="banner banner-warn" data-late-warning{% if not late %} hidden{% endif %}>
+    {{ icon("alert", 18) }}
+    <span class="banner-body">Dieser Tag liegt mehr als 48 h zurück – der Eintrag wird als <strong>nachträglich</strong> gekennzeichnet.</span>
+  </div>
+
+  <div class="field" data-reason-field{% if not reason_required %} hidden{% endif %}>
+    <label for="f-begruendung">Begründung <span class="text-danger">*</span></label>
+    <div class="banner banner-warn">
+      {{ icon("alert", 18) }}
+      <span class="banner-body">Dieser Monat ist abgeschlossen. Ein neuer Eintrag ist nur mit Begründung möglich;
+        der Monatsabschluss wird als „nachträglich korrigiert“ markiert.</span>
+    </div>
+    <input type="text" id="f-begruendung" name="begruendung" value="{{ form.begruendung }}" maxlength="500"
+           placeholder="z. B. Eintrag vergessen, Beleg: Kalender"{% if error_field == "begruendung" %} aria-invalid="true" aria-describedby="err-begruendung"{% endif %}>
+    {% if error_field == "begruendung" and error %}<p class="field-error" id="err-begruendung">{{ error }}</p>{% endif %}
+  </div>
+
+  <div class="form-actions entry-actions">
+    <a class="btn btn-ghost" href="{{ back_url }}">Abbrechen</a>
+    <button type="submit" class="btn btn-primary">{{ icon("check", 18) }} Speichern</button>
+  </div>
+</form>
+{% endblock %}

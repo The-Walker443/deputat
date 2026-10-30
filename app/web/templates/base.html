@@ -1,0 +1,76 @@
+{% from "partials/icons.html" import icon %}
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+  <meta name="csrf-token" content="{{ csrf_token(request) }}">
+  <meta name="deputat-base-url" content="{{ base_url() }}">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "historyCacheSize": 0}'>
+  <title>{% block title %}{{ page_title|default("Deputat") }}{% endblock %} · Deputat</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="{{ static_url('css/app.css') }}">
+  {# Order matters: all scripts are deferred and run in document order. Scripts registering
+     Alpine components (Alpine.data in an alpine:init listener) must come before alpine.min.js. #}
+  <script src="{{ static_url('vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ static_url('js/app.js') }}" defer></script>
+  {% block head_scripts %}{% endblock %}
+  <script src="{{ static_url('vendor/alpine.min.js') }}" defer></script>
+</head>
+<body class="{% block body_class %}{% endblock %}{% if hide_nav %} no-nav{% endif %}"
+      hx-headers='{{ {"X-CSRF-Token": csrf_token(request)}|tojson }}'>
+  <a class="skip-link" href="#main">Zum Inhalt springen</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      {% block topbar_left %}
+      <h1 class="topbar-title">{% block page_title %}{{ page_title|default("Deputat") }}{% endblock %}</h1>
+      {% endblock %}
+      <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+    </div>
+  </header>
+
+  <div class="offline-banner" data-offline-banner hidden>
+    {{ icon("wifi-off", 16) }}<span>Offline – Aktionen werden gespeichert und später übertragen.</span>
+  </div>
+  {# Shown by app.js on plain http (LAN) outside localhost when BASE_URL is https. #}
+  <div class="https-banner" data-https-banner role="note" hidden>
+    {{ icon("info", 16) }}
+    <span class="https-banner-text">Für Offline-Timer und App-Installation bitte
+      <a href="{{ base_url() }}" data-https-link>{{ base_url() }}</a> verwenden.</span>
+    <button type="button" class="banner-close" data-https-banner-close aria-label="Hinweis schließen">{{ icon("x", 16) }}</button>
+  </div>
+
+  <main id="main" class="container">
+    <div class="flash-area" id="flash-area" aria-live="polite">
+      {% for f in pop_flashes(request) %}
+      <div class="banner banner-{{ f.kind }} flash" data-flash role="status">
+        <span class="banner-body">{{ f.message }}</span>
+        <button type="button" class="banner-close" data-flash-close aria-label="Hinweis schließen">{{ icon("x", 16) }}</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% block reminders %}{% if not hide_nav %}{% include "partials/reminders_slot.html" %}{% endif %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if not hide_nav %}
+  <nav class="bottom-nav" aria-label="Hauptnavigation">
+    {% for item in nav_items %}
+    {% set active = is_active(request, item) %}
+    <a href="{{ item.href }}" class="bottom-nav-item{% if active %} is-active{% endif %}"{% if active %} aria-current="page"{% endif %}>
+      {{ icon(item.icon, 24) }}
+      <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% block body_scripts %}{% endblock %}
+</body>
+</html>

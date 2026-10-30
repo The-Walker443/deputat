@@ -1,0 +1,30 @@
+{# Revision history of one entry (Konzept §8.3). Context: history (list of HistoryItem). #}
+<section class="card entry-history" aria-labelledby="history-title">
+  <h2 class="card-title" id="history-title">Verlauf</h2>
+  {% if history|length == 1 %}
+  <p class="text-small text-muted">Noch keine Änderungen – dies ist die erste Version.</p>
+  {% endif %}
+  <ol class="history">
+    {% for h in history %}
+    <li class="history-item{% if h.current %} is-current{% endif %}{% if h.kind == 'erstellt' %} is-note{% endif %}">
+      <div class="history-title">{{ h.title }}</div>
+      <div class="history-summary{% if h.kind == 'version' %} num{% endif %}">{{ h.summary }}</div>
+      {% if h.change_label %}
+      <div class="history-change">
+        <span class="badge{% if h.change_label == 'Gelöscht' %} badge-danger{% elif h.change_label == 'Wiederhergestellt' %} badge-success{% else %} badge-primary{% endif %}">{{ h.change_label }}</span>
+        <span class="text-small text-muted">am {{ h.changed_at }}</span>
+      </div>
+      {% if h.diff %}
+      <dl class="history-diff">
+        {% for label, old, new in h.diff %}
+        <dt>{{ label }}</dt>
+        <dd><del>{{ old }}</del> <span aria-hidden="true">→</span><span class="visually-hidden"> geändert zu </span> <ins>{{ new }}</ins></dd>
+        {% endfor %}
+      </dl>
+      {% endif %}
+      {% endif %}
+      {% if h.reason %}<div class="history-reason text-small">Grund: {{ h.reason }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>

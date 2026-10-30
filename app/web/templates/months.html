@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Monate & Berichte" (Konzept §10): month list of a period + links to year report, export, import. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('vendor/chart.umd.min.js') }}" defer></script>
+  <script src="{{ static_url('js/months.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="months stack">
+  {% if periods|length > 1 %}
+  <form method="get" action="/monate" class="months-period" data-autosubmit>
+    <label class="visually-hidden" for="periode">Schuljahr</label>
+    <select id="periode" name="periode">
+      {% for p in periods %}
+      <option value="{{ p.id }}"{% if period and p.id == period.id %} selected{% endif %}>Schuljahr {{ p.label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary" data-autosubmit-fallback>Anzeigen</button>
+  </form>
+  {% endif %}
+
+  {% if error %}
+  <section class="empty-state">
+    {{ icon("calendar", 40) }}
+    <h2 class="h2">Keine Monate</h2>
+    <p class="text-muted">{{ error }}</p>
+    <a class="btn btn-primary" href="/kalender">Schuljahr anlegen</a>
+  </section>
+  {% else %}
+  <p class="text-muted text-small">
+    Schuljahr <strong class="text-strong">{{ period.label }}</strong> · {{ period.start|date_de }} – {{ period.end|date_de }}
+  </p>
+
+  {% if closable %}
+  <div class="banner banner-info" role="status">
+    {{ icon("info", 18) }}
+    <span class="banner-body">
+      {% if closable|length == 1 %}{{ closable[0].label }} ist vorbei und noch nicht abgeschlossen.
+      {% else %}{{ closable|length }} vergangene Monate sind noch nicht abgeschlossen.{% endif %}
+      <a href="/monate/{{ closable[0].year_month }}">Jetzt prüfen und abschließen</a>
+    </span>
+  </div>
+  {% endif %}
+
+  <section aria-labelledby="months-table-title">
+    <h2 class="section-title" id="months-table-title">Monate</h2>
+    <div class="table-wrap">
+      <table class="table months-table">
+        <thead>
+          <tr>
+            <th scope="col">Monat</th>
+            <th scope="col" class="num">Soll</th>
+            <th scope="col" class="num">Ist</th>
+            <th scope="col" class="num">Saldo</th>
+            <th scope="col" class="num" title="Mehrarbeit im engen Sinn (Unterrichtsstunden)">MA UStd</th>
+            <th scope="col">Status</th>
+            <th scope="col">Hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{% if r.zukunft %}is-future{% endif %}{% if r.year_month == current_ym %} is-current{% endif %}">
+            <th scope="row" class="months-name">
+              <a href="/monate/{{ r.year_month }}">{{ r.label }}</a>
+              {% if r.laufend %}<span class="badge badge-primary">läuft</span>{% endif %}
+            </th>
+            {% if r.zukunft %}
+            {% for _ in range(4) %}<td class="num text-faint">–</td>{% endfor %}
+            {% else %}
+            <td class="num">{{ r.soll|hm }}</td>
+            <td class="num">{{ r.ist|hm }}</td>
+            <td class="num {% if r.saldo > 0 %}is-positive{% elif r.saldo < 0 %}is-negative{% endif %}">{{ r.saldo|hm(plus=True) }}</td>
+            <td class="num">
+              {% if r.ustd_total %}{{ ustd(r.ustd_total) }}{% if r.ustd_ausgleichsfaehig %} <span class="badge badge-warn" title="ausgleichsfähig">!</span>{% endif %}{% else %}<span class="text-faint">–</span>{% endif %}
+            </td>
+            {% endif %}
+            <td><span class="badge {{ status_badges.get(r.status, 'badge-outline') }}">{{ r.status_label }}</span></td>
+            <td>{% if r.hash %}<code class="months-hash" title="{{ r.hash }}">{{ r.hash[:10] }}</code>{% else %}<span class="text-faint">–</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Summe</td>
+            <td class="num">{{ totals.soll|hm }}</td>
+            <td class="num">{{ totals.ist|hm }}</td>
+            <td class="num {% if totals.saldo > 0 %}is-positive{% elif totals.saldo < 0 %}is-negative{% endif %}">{{ totals.saldo|hm(plus=True) }}</td>
+            <td class="num">{{ ustd(totals.ustd) if totals.ustd else "–" }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="field-hint mt-2">Soll/Ist bis heute. MA UStd = Vertretungen „angeordnet/genehmigt“ in Unterrichtsstunden (45 min); „!“ = über der Bagatellgrenze, ausgleichsfähig.</p>
+  </section>
+
+  <section class="card" aria-labelledby="months-chart-title">
+    <h2 class="card-title" id="months-chart-title">Saldo je Monat</h2>
+    <div class="chart-box months-chart">
+      <canvas data-months-chart data-chart='{{ chart_json }}' role="img"
+              aria-label="Balkendiagramm: Saldo je Monat in Stunden, Linie: Saldo kumuliert"></canvas>
+    </div>
+    <p class="field-hint">Balken: Saldo des Monats (Ist − Soll) · Linie: Saldo kumuliert, jeweils in Stunden.</p>
+  </section>
+  {% endif %}
+
+  <section aria-labelledby="months-more-title">
+    <h2 class="section-title" id="months-more-title">Berichte &amp; Daten</h2>
+    <nav class="card card-flush" aria-label="Berichte und Daten">
+      {% if period %}
+      <a class="menu-item" href="/berichte/jahr?periode={{ period.id }}">
+        <span class="menu-icon">{{ icon("file", 22) }}</span>
+        <span class="menu-text"><span class="menu-label">Jahresbericht {{ period.label }}</span>
+          <span class="menu-hint">Konto-Chart, Urlaubszuordnung, Ferienarbeit, Klassenfahrt A/B</span></span>
+        {{ icon("chevron-right", 18, "icon menu-chevron") }}
+      </a>
+      {% endif %}
+      <a class="menu-item" href="/export">
+        <span class="menu-icon">{{ icon("upload", 22, "icon months-flip") }}</span>
+        <span class="menu-text"><span class="menu-label">Export &amp; Backup</span>
+          <span class="menu-hint">CSV, JSON-Vollbackup, ICS, Wiederherstellen</span></span>
+        {{ icon("chevron-right", 18, "icon menu-chevron") }}
+      </a>
+      <a class="menu-item" href="/import">
+        <span class="menu-icon">{{ icon("upload", 22) }}</span>
+        <span class="menu-text"><span class="menu-label">Import</span>
+          <span class="menu-hint">Bestehende Aufzeichnungen (CSV/XLSX) übernehmen</span></span>
+        {{ icon("chevron-right", 18, "icon menu-chevron") }}
+      </a>
+    </nav>
+  </section>
+</div>
+{% endblock %}

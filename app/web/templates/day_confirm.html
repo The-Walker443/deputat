@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Day confirmation (Konzept §7.2): per planned lesson "wie geplant / entfallen / Vertretung gehalten / Exkursion /
+   Zeit angepasst", an additional Vertretung and the reason for closed months. Works without JavaScript. #}
+{% block topbar_left %}
+<a class="btn btn-ghost btn-icon btn-sm" href="{{ back_url }}" aria-label="Zurück">{{ icon("chevron-left", 20) }}</a>
+<h1 class="topbar-title">{{ view.weekday_name }}, {{ day|date_de }}</h1>
+{% endblock %}
+
+{% macro klasse_select(name, value, id) %}
+<select id="{{ id }}" name="{{ name }}">
+  <option value="">–</option>
+  {% for k in klassen %}<option value="{{ k }}"{% if value == k %} selected{% endif %}>{{ k }}</option>{% endfor %}
+  {% if value and value not in klassen %}<option value="{{ value }}" selected>{{ value }}</option>{% endif %}
+</select>
+{% endmacro %}
+{% macro fach_select(name, value, id) %}
+<select id="{{ id }}" name="{{ name }}">
+  <option value="">–</option>
+  {% for f in faecher %}<option value="{{ f }}"{% if value == f %} selected{% endif %}>{{ f }}</option>{% endfor %}
+  {% if value and value not in faecher %}<option value="{{ value }}" selected>{{ value }}</option>{% endif %}
+</select>
+{% endmacro %}
+
+{% block content %}
+<div class="stack day-confirm">
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Tagesübersicht</h2>
+      {% if view.confirmed %}<span class="badge badge-success">bestätigt</span>{% elif view.schultag %}<span class="badge badge-warn">nicht bestätigt</span>{% endif %}
+    </div>
+    <p class="num">Ist {{ view.ist_hm }} / Soll {{ view.soll_hm }}{% if view.soll %} · <span class="{% if view.delta > 0 %}is-positive{% elif view.delta < 0 %}is-negative{% endif %}">{{ view.delta_hm }}</span>{% endif %}</p>
+    {% if view.suggestions_hinweis %}
+    <p class="text-small text-muted mt-2">{{ view.suggestions_hinweis }}</p>
+    {% endif %}
+    <p class="text-small mt-2">
+      <a href="/eintraege/neu?datum={{ day.isoformat() }}&amp;next=/tag/{{ day.isoformat() }}">{{ icon("plus", 14) }} Weiteren Eintrag nachtragen</a>
+      · <a href="/kalender/tag/{{ day.isoformat() }}">Abwesenheit / krank</a>
+      · <a href="/woche?datum={{ day.isoformat() }}">Woche</a>
+    </p>
+  </section>
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body"><strong>Nicht bestätigt:</strong> {{ error }}</span></div>
+  {% endif %}
+
+  {% if not view.schultag %}
+  <div class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">An diesem Tag gibt es nichts zu bestätigen.</span></div>
+  {% elif day > today %}
+  <div class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">Zukünftige Tage können erst an dem Tag bestätigt werden.</span></div>
+  {% elif not items %}
+  <div class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">Für diesen Tag plant der Stundenplan nichts. Zeiten bitte als Eintrag nachtragen.</span></div>
+  {% else %}
+  <form method="post" action="/tag/{{ day.isoformat() }}" class="stack" data-day-confirm>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+
+    <section class="card stack-sm" aria-labelledby="dc-items">
+      <h2 class="card-title" id="dc-items">Stunden laut Stundenplan</h2>
+      <p class="text-small text-muted">Alles wie geplant? Dann einfach unten bestätigen. Sonst je Stunde die Abweichung wählen –
+        die Angaben darunter brauchst du nur bei Vertretung, Exkursion oder geänderter Zeit.</p>
+      <ol class="list day-confirm-list">
+        {% for row in items %}
+        {% set i = loop.index0 %}
+        {% set dev = row.dev or {} %}
+        <li class="list-item day-confirm-item">
+          <input type="hidden" name="key" value="{{ row.key }}">
+          <div class="stack-sm day-confirm-body">
+            <div class="day-confirm-head">
+              <span class="chip-dot" style="--chip-color: {{ row.color }}"></span>
+              <span class="list-item-main">
+                <span class="list-item-title">{{ row.start }}–{{ row.end }} · {{ row.label }}</span>
+                <span class="list-item-meta">{% if row.frei %}Freistunde{% else %}{{ row.code }} {{ row.name }}{% if row.klasse %} · {{ row.klasse }}{% endif %}{% if row.fach %} · {{ row.fach }}{% endif %}{% endif %}
+                  {%- if row.status == "verworfen" %} · <span class="badge badge-outline">entfallen</span>{% elif row.status == "active" %} · <span class="badge badge-success">zählt</span>{% elif row.status == "vorschlag" %} · <span class="badge badge-outline">Vorschlag</span>{% endif %}</span>
+              </span>
+            </div>
+            <div class="field">
+              <label for="typ-{{ i }}">Wie lief die Stunde?</label>
+              <select id="typ-{{ i }}" name="typ_{{ i }}">
+                {% for value, label in (free_choices if row.frei else deviation_choices) %}
+                <option value="{{ value }}"{% if row.deviation == value %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <details class="admin-details"{% if row.deviation not in ("wie_geplant", "entfallen") %} open{% endif %}>
+              <summary>Angaben zur Abweichung</summary>
+              <div class="stack-sm mt-2">
+                <div class="form-row">
+                  <div class="field"><label for="start-{{ i }}">Beginn</label><input id="start-{{ i }}" type="time" name="start_{{ i }}" value="{{ dev.start or '' }}"></div>
+                  <div class="field"><label for="end-{{ i }}">Ende</label><input id="end-{{ i }}" type="time" name="end_{{ i }}" value="{{ dev.end or '' }}"></div>
+                </div>
+                <span class="field-hint">Nur für „Zeit angepasst“ (Pflicht) oder abweichende Zeiten bei Vertretung/Exkursion.</span>
+                <div class="form-row">
+                  <div class="field"><label for="klasse-{{ i }}">Klasse (Vertretung)</label>{{ klasse_select("klasse_" ~ i, dev.klasse, "klasse-" ~ i) }}</div>
+                  <div class="field"><label for="fach-{{ i }}">Fach (Vertretung)</label>{{ fach_select("fach_" ~ i, dev.fach, "fach-" ~ i) }}</div>
+                </div>
+                <div class="field">
+                  <label for="art-{{ i }}">Vertretung</label>
+                  <select id="art-{{ i }}" name="art_{{ i }}">
+                    {% for value, label in art_choices %}<option value="{{ value }}"{% if (dev.art or "angeordnet") == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <span class="field-hint">Angeordnete oder genehmigte Vertretungen zählen als Mehrarbeit (Art. 87 BayBG).</span>
+                </div>
+                <div class="field"><label for="notiz-{{ i }}">Notiz</label><input id="notiz-{{ i }}" name="notiz_{{ i }}" maxlength="500" value="{{ dev.note or '' }}"></div>
+              </div>
+            </details>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="field-hint">Exkursion wird als „{{ exkursion_name }}“ gezählt, entfallene Stunden zählen nicht.</p>
+    </section>
+
+    <section class="card stack-sm" aria-labelledby="dc-extra">
+      <details class="admin-details"{% if extra.klasse or extra.start %} open{% endif %}>
+        <summary id="dc-extra">Zusätzliche Vertretung (außerhalb des Stundenplans)</summary>
+        <div class="stack-sm mt-2">
+          <div class="form-row">
+            <div class="field"><label for="x-start">Beginn</label><input id="x-start" type="time" name="extra_start" value="{{ extra.start or '' }}"></div>
+            <div class="field"><label for="x-end">Ende</label><input id="x-end" type="time" name="extra_end" value="{{ extra.end or '' }}"></div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label for="x-klasse">Klasse</label>{{ klasse_select("extra_klasse", extra.klasse, "x-klasse") }}</div>
+            <div class="field"><label for="x-fach">Fach</label>{{ fach_select("extra_fach", extra.fach, "x-fach") }}</div>
+          </div>
+          <div class="field">
+            <label for="x-art">Vertretung</label>
+            <select id="x-art" name="extra_art">
+              {% for value, label in art_choices %}<option value="{{ value }}"{% if (extra.art or "angeordnet") == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    {% if view.month_closed %}
+    <section class="card stack-sm">
+      <div class="field">
+        <label for="dc-grund">Begründung <span class="text-danger">*</span></label>
+        <div class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">Dieser Monat ist abgeschlossen. Bestätigen ist nur mit Begründung möglich; der Abschluss wird als „nachträglich korrigiert“ markiert.</span></div>
+        <input id="dc-grund" name="grund" maxlength="500" value="{{ reason }}" required>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{{ back_url }}">Abbrechen</a>
+      <button type="submit" class="btn btn-primary">{{ icon("check", 18) }} {% if view.confirmed %}Erneut bestätigen{% else %}Tag bestätigen{% endif %}</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

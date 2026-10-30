@@ -1,0 +1,153 @@
+{# Shared fields of the manual entry form (new + edit). Context: form, tree, klassen, faecher,
+   location_labels, flag_labels, form_flags_u, form_flags_all, note_placeholder, error_field. #}
+{% from "partials/icons.html" import icon %}
+{% macro invalid(name) -%}
+{%- if error_field == name %} aria-invalid="true" aria-describedby="err-{{ name }}"{% endif -%}
+{%- endmacro %}
+{% macro field_error(name) -%}
+{%- if error_field == name and error %}<p class="field-error" id="err-{{ name }}">{{ error }}</p>{% endif -%}
+{%- endmacro %}
+{% set sel = namespace(u=false, note=false) %}
+{% for c in tree.mains %}{% if form.kategorie == c.id|string %}{% set sel.u = c.is_unterricht %}{% set sel.note = c.requires_note %}{% endif %}{% endfor %}
+{% set sub_json = {} %}
+{% for c in tree.mains %}
+  {% set rows = [] %}
+  {% for s in tree.children.get(c.id, []) %}{% set _ = rows.append([s.id|string, s.name]) %}{% endfor %}
+  {% set _ = sub_json.update({c.id|string: rows}) %}
+{% endfor %}
+
+<div class="field">
+  <label for="f-datum">Datum</label>
+  <input type="date" id="f-datum" name="datum" value="{{ form.datum }}" required data-entry-date{{ invalid("datum") }}>
+  {{ field_error("datum") }}
+</div>
+
+<fieldset class="fieldset entry-mode">
+  <legend>Zeit</legend>
+  <div class="segmented" role="radiogroup" aria-label="Erfassungsart">
+    <label><input type="radio" name="modus" value="zeit"{% if form.modus != "dauer" %} checked{% endif %}><span>Von – Bis</span></label>
+    <label><input type="radio" name="modus" value="dauer"{% if form.modus == "dauer" %} checked{% endif %}><span>Nur Dauer</span></label>
+  </div>
+
+  <div class="entry-mode-panel stack-sm mt-3" data-mode-panel="zeit">
+    <div class="form-row">
+      <div class="field">
+        <label for="f-von">Von</label>
+        <input type="time" id="f-von" name="von" value="{{ form.von }}" data-entry-from{{ invalid("von") }}>
+        {{ field_error("von") }}
+      </div>
+      <div class="field">
+        <label for="f-bis">Bis</label>
+        <input type="time" id="f-bis" name="bis" value="{{ form.bis }}"{{ invalid("bis") }}>
+        {{ field_error("bis") }}
+      </div>
+    </div>
+    <label class="check text-small">
+      <input type="checkbox" name="folgetag" value="1"{% if form.folgetag %} checked{% endif %}>
+      endet am Folgetag (wird an Mitternacht automatisch geteilt)
+    </label>
+  </div>
+
+  <div class="entry-mode-panel stack-sm mt-3" data-mode-panel="dauer">
+    <div class="field">
+      <label for="f-dauer">Dauer</label>
+      <input type="text" id="f-dauer" name="dauer" value="{{ form.dauer }}" inputmode="decimal"
+             placeholder="z. B. 1:30 oder 1,5" autocomplete="off"{{ invalid("dauer") }}>
+      {{ field_error("dauer") }}
+    </div>
+    <div class="banner banner-warn">
+      {{ icon("alert", 18) }}
+      <span class="banner-body">Ohne Uhrzeiten – geringere Beweiskraft. Wenn möglich Von/Bis erfassen.</span>
+    </div>
+  </div>
+</fieldset>
+
+<div class="form-row">
+  <div class="field">
+    <label for="f-kategorie">Kategorie</label>
+    <select id="f-kategorie" name="kategorie" required data-category-select{{ invalid("kategorie") }}>
+      <option value="">Bitte wählen …</option>
+      {% for c in tree.mains %}
+      <option value="{{ c.id }}" data-unterricht="{{ 1 if c.is_unterricht else 0 }}"
+              data-requires-note="{{ 1 if c.requires_note else 0 }}"{% if form.kategorie == c.id|string %} selected{% endif %}>{{ c.code }} – {{ c.name }}</option>
+      {% endfor %}
+    </select>
+    {{ field_error("kategorie") }}
+  </div>
+  <div class="field">
+    <label for="f-unterkategorie">Unterkategorie</label>
+    <select id="f-unterkategorie" name="unterkategorie" data-subcategory-select
+            data-subcategories='{{ sub_json|tojson }}'{{ invalid("unterkategorie") }}>
+      <option value="">– keine –</option>
+      {% if form.kategorie %}
+      {% for s in tree.children.get(form.kategorie|int, []) %}
+      <option value="{{ s.id }}"{% if form.unterkategorie == s.id|string %} selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+      {% endif %}
+    </select>
+    {{ field_error("unterkategorie") }}
+  </div>
+</div>
+<details class="admin-details entry-cat-hints">
+  <summary class="text-small">Hinweise zu einzelnen Kategorien</summary>
+  <ul class="text-small stack-sm mt-2">
+    <li><strong>F Fortbildung:</strong> Bei einer ganztägigen Fortbildung zusätzlich im Kalender die Abwesenheit
+      „Fortbildung“ setzen – das Soll bleibt, gezählt wird die hier erfasste Zeit.</li>
+    <li><strong>FS Funktionen &amp; Sonderaufgaben:</strong> Zeit für Aufgaben, für die es Anrechnungsstunden gibt;
+      unter „Jahr“ steht sie neben den Anrechnungsstunden.</li>
+    <li><strong>DW Dienstwege:</strong> nur Wege zwischen Dienstorten oder zur Fortbildung – nicht der Weg zwischen
+      Wohnung und Schule.</li>
+    <li><strong>S Sonstiges:</strong> Notiz ist Pflicht.</li>
+  </ul>
+</details>
+
+<div class="form-row form-row-3">
+  <div class="field">
+    <label for="f-klasse">Klasse</label>
+    <select id="f-klasse" name="klasse"{{ invalid("klasse") }}>
+      <option value="">–</option>
+      {% for k in klassen %}<option value="{{ k }}"{% if form.klasse == k %} selected{% endif %}>{{ k }}</option>{% endfor %}
+    </select>
+    {{ field_error("klasse") }}
+  </div>
+  <div class="field">
+    <label for="f-fach">Fach</label>
+    <input type="text" id="f-fach" name="fach" value="{{ form.fach }}" list="f-faecher" maxlength="64" autocomplete="off">
+    <datalist id="f-faecher">{% for f in faecher %}<option value="{{ f }}">{% endfor %}</datalist>
+  </div>
+  <div class="field">
+    <label for="f-ort">Ort</label>
+    <select id="f-ort" name="ort" data-location-select{% if not form.ort and not entry %} data-auto-location="1"{% endif %}{{ invalid("ort") }}>
+      <option value="">–</option>
+      {% for key, label in location_labels.items() %}
+      <option value="{{ key }}"{% if form.ort == key %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {{ field_error("ort") }}
+  </div>
+</div>
+
+<div class="field">
+  <label for="f-notiz">Notiz <span class="text-muted text-xs" data-note-required-hint{% if not sel.note %} hidden{% endif %}>(Pflicht bei dieser Kategorie)</span></label>
+  <textarea id="f-notiz" name="notiz" rows="3" maxlength="2000" placeholder="{{ note_placeholder }}"
+            data-note-field{{ invalid("notiz") }}>{{ form.notiz }}</textarea>
+  {{ field_error("notiz") }}
+  <span class="field-hint">Datenschutz: keine Namen von Kindern oder Eltern eintragen.</span>
+</div>
+
+<fieldset class="fieldset">
+  <legend>Kennzeichen</legend>
+  <div class="stack-sm">
+    <div class="stack-sm" data-unterricht-only{% if not sel.u %} hidden{% endif %}>
+      {% for f in form_flags_u %}
+      <label class="check"><input type="checkbox" name="flags" value="{{ f }}"{% if f in form.flags %} checked{% endif %}> {{ flag_labels[f] }}</label>
+      {% endfor %}
+      <span class="field-hint">Nur bei Unterricht: Vertretung, die angeordnet bzw. genehmigt wurde (Mehrarbeit).
+        Bei der Unterkategorie „Vertretung (gehalten)“ ohne Häkchen gilt „angeordnet“.</span>
+    </div>
+    {% for f in form_flags_all %}
+    <label class="check"><input type="checkbox" name="flags" value="{{ f }}"{% if f in form.flags %} checked{% endif %}> {{ flag_labels[f] }}</label>
+    {% endfor %}
+    <span class="field-hint">Die Unterkategorie „Klassenfahrt“ setzt das Kennzeichen Klassenfahrt automatisch.</span>
+  </div>
+</fieldset>

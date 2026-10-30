@@ -1,0 +1,132 @@
+{# Shared report sections (macros). Values in seconds are formatted with the hm / dec filters. #}
+
+{% macro signed(seconds) -%}
+<span class="{{ 'pos' if seconds > 0 else ('neg' if seconds < 0 else '') }}">{{ seconds|hm(plus=True) or '0:00' }}</span>
+{%- endmacro %}
+
+{% macro hmdec(seconds) -%}
+{{ seconds|hm or '0:00' }} <span class="muted small">({{ seconds|dec }} h)</span>
+{%- endmacro %}
+
+{% macro head_meta(head) %}
+<dl class="meta">
+  <dt>Name</dt><dd>{{ head.name or '–' }}</dd>
+  <dt>Schule</dt><dd>{{ head.schule or '–' }}</dd>
+  <dt>UPZ</dt><dd>{{ head.upz_ist_text }} von {{ head.upz_voll_text }}{% if head.altersermaessigung or head.anrechnungsstunden %} (Altersermäßigung {{ head.altersermaessigung_text }}, Anrechnung {{ head.anrechnungsstunden_text }}{% if head.anrechnungs_grund %}: {{ head.anrechnungs_grund }}{% endif %}){% endif %}</dd>
+  <dt>Teilzeitfaktor</dt><dd>{{ head.teilzeitfaktor_text }} (Referenz-Soll {{ head.wochen_soll_text }} h × Faktor)</dd>
+  <dt>Periode</dt><dd>{{ head.period_label }} ({{ head.period_range }})</dd>
+  <dt>Urlaubsmodus</dt><dd>{{ head.leave_mode }}</dd>
+  <dt>Klassenfahrt</dt><dd>Variante {{ head.klassenfahrt_variante }}</dd>
+  <dt>Erstellt am</dt><dd>{{ head.created }}</dd>
+</dl>
+{% endmacro %}
+
+{% macro categories_table(categories, total) %}
+{% if categories %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Kategorie</th><th class="num">Stunden</th><th class="num">dezimal</th><th class="num">Anteil</th></tr></thead>
+  <tbody>
+  {% for c in categories %}
+    <tr>
+      <td><span class="swatch" style="background: {{ c.color }}"></span>{{ c.code }} – {{ c.name }}{% if c.is_unterricht %} <span class="muted small">(Unterricht)</span>{% endif %}</td>
+      <td class="num">{{ c.seconds|hm }}</td>
+      <td class="num">{{ c.seconds|dec }}</td>
+      <td class="num">{{ '%.1f'|format(c.share * 100)|replace('.', ',') }} %</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Summe (ohne Krank-Einträge)</td><td class="num">{{ total|hm or '0:00' }}</td><td class="num">{{ total|dec }}</td><td class="num">100 %</td></tr></tfoot>
+</table>
+</div>
+{% else %}
+<p class="muted">Keine Einträge.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro weeks_table(weeks, w_max) %}
+{% if weeks %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>KW</th><th>Woche ab</th><th class="num">Schultage</th><th class="num">Ist</th><th class="num">Soll</th><th class="num">Differenz</th><th class="num">W_max</th><th class="num">Ist erfasst</th></tr></thead>
+  <tbody>
+  {% for w in weeks %}
+    <tr>
+      <td>{{ w.iso_week }}</td>
+      <td class="nowrap">{{ w.monday|date_de }}</td>
+      <td class="num">{{ w.schultage }}</td>
+      <td class="num">{{ w.ist|hm or '0:00' }}</td>
+      <td class="num">{{ w.soll|hm or '0:00' }}</td>
+      <td class="num">{{ signed(w.ist - w.soll) }}</td>
+      <td class="num">{% if w.schultage %}{{ w_max|hm }}{% else %}–{% endif %}</td>
+      <td class="num">{{ w.ist_erfasst|hm or '0:00' }}{% if w.ist_erfasst > 48 * 3600 and w.schultage %} <span class="neg small">&gt; 48 h</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small muted">W_max = rechnerisch zulässige Stunden je (voller) Schulwoche, damit J_soll gerade erreicht wird. Wochen am Monatsrand sind Teilwochen.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro entries_table(entries, total) %}
+{% if entries %}
+<div class="table-wrap">
+<table class="entries">
+  <thead>
+    <tr><th>Datum</th><th>Von</th><th>Bis</th><th class="num">Dauer</th><th>Kategorie</th><th>Klasse/Fach</th><th>Ort</th><th>Flags</th><th>Quelle</th><th>erfasst am</th><th>geändert am</th></tr>
+  </thead>
+  <tbody>
+  {% for e in entries %}
+    <tr class="{{ 'deleted' if e.deleted }}">
+      <td class="nowrap">{{ e.weekday }} {{ e.date|date_de }}</td>
+      <td class="nowrap">{{ e.von }}</td>
+      <td class="nowrap">{{ e.bis }}</td>
+      <td class="num">{{ e.dauer }}<span class="note">{{ e.dauer_dec }} h</span></td>
+      <td><span class="swatch" style="background: {{ e.category_color }}"></span>{{ e.category }}{% if e.subcategory %}<span class="note">{{ e.subcategory }}</span>{% endif %}{% if e.note %}<span class="note">„{{ e.note }}“</span>{% endif %}</td>
+      <td>{{ e.klasse_fach }}</td>
+      <td>{{ e.ort }}</td>
+      <td>{{ e.flags }}</td>
+      <td>{{ e.quelle }}{% if e.import %}<span class="note">{{ e.import }}</span>{% endif %}</td>
+      <td class="nowrap keep">{{ e.created }}</td>
+      <td class="nowrap keep">{{ e.updated }}{% if e.deleted %}<span class="note">gelöscht {{ e.deleted }}</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td colspan="3">Summe ({{ entries|rejectattr('deleted')|list|length }} Einträge, ohne gelöschte und Krank-Einträge)</td><td class="num">{{ total|hm or '0:00' }}</td><td colspan="7"></td></tr></tfoot>
+</table>
+</div>
+{% else %}
+<p class="muted">Keine Einträge.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro revisions_table(revisions) %}
+{% if revisions %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Zeitpunkt</th><th>Eintrag</th><th class="num">Rev.</th><th>Art</th><th>Änderung</th><th>Begründung</th></tr></thead>
+  <tbody>
+  {% for r in revisions %}
+    <tr>
+      <td class="nowrap">{{ r.changed_at }}</td>
+      <td class="nowrap">{{ r.entry }}<span class="note mono">{{ r.entry_id[:8] }}…</span></td>
+      <td class="num">{{ r.revision_no }}</td>
+      <td>{{ r.kind_label }}</td>
+      <td>
+        {% if r.changes %}
+        <ul class="changes">
+          {% for c in r.changes %}<li>{{ c.field }}: {{ c.before }} → {{ c.after }}</li>{% endfor %}
+        </ul>
+        {% else %}{{ r.detail or '–' }}{% endif %}
+      </td>
+      <td>{{ r.reason or '–' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Keine Änderungen.</p>
+{% endif %}
+{% endmacro %}

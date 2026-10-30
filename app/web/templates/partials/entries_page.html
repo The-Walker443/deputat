@@ -1,0 +1,52 @@
+{# One page of day groups (+ trigger for the next page). Used by the list and GET /eintraege/mehr. #}
+{% from "partials/icons.html" import icon %}
+{% set list_url = "/eintraege?" ~ filters.query() %}
+{% for g in groups %}
+<section class="entries-day card card-flush" aria-labelledby="day-{{ g.day.isoformat() }}">
+  <header class="entries-day-head">
+    <h2 class="entries-day-title" id="day-{{ g.day.isoformat() }}">
+      <span class="entries-day-wd">{{ g.day|weekday_de }}</span> {{ g.day|date_de }}
+      {% if g.day == today %}<span class="badge badge-primary">heute</span>{% endif %}
+    </h2>
+    <span class="entries-day-sum num" title="Summe der zählenden Einträge">{{ g.total|hm }} h</span>
+    <a class="btn btn-ghost btn-icon btn-sm" href="/eintraege/neu?{{ {'datum': g.day.isoformat(), 'next': list_url}|urlencode }}"
+       aria-label="Eintrag am {{ g.day|date_de }} anlegen">{{ icon("plus", 18) }}</a>
+  </header>
+  <ul class="list entries-list">
+    {% for r in g.rows %}
+    <li>
+      <a class="entry-row{% if r.deleted %} is-deleted{% endif %}{% if not r.counts %} is-muted{% endif %}"
+         href="/eintraege/{{ r.entry.id }}?{{ {'next': list_url}|urlencode }}">
+        <span class="entry-code" style="--c: {{ r.color }}">{{ r.code }}</span>
+        <span class="entry-main">
+          <span class="entry-line">
+            <span class="entry-time num">{{ r.time_label }}</span>
+            <span class="entry-title">{{ r.title }}</span>
+          </span>
+          {% if r.meta or r.entry.note %}
+          <span class="entry-meta">
+            {{ r.meta|join(" · ") }}{% if r.meta and r.entry.note %} · {% endif %}{% if r.entry.note %}<span class="entry-note">{{ r.entry.note }}</span>{% endif %}
+          </span>
+          {% endif %}
+          {% if r.badges %}
+          <span class="entry-badges">
+            {% for label, cls in r.badges %}<span class="badge {{ cls }}">{{ label }}</span>{% endfor %}
+          </span>
+          {% endif %}
+        </span>
+        <span class="entry-duration num">{{ r.duration }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% if has_more %}
+<div class="entries-more">
+  <a class="btn btn-secondary btn-block" href="/eintraege?{{ filters.query(seite=next_page) }}"
+     hx-get="/eintraege/mehr?{{ filters.query(seite=next_page) }}" hx-target="closest .entries-more"
+     hx-swap="outerHTML" hx-trigger="click, intersect once">
+    <span class="spinner htmx-indicator" aria-hidden="true"></span> Weitere Tage laden
+  </a>
+</div>
+{% endif %}

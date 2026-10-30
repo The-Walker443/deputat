@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% import "partials/calendar_macros.html" as cm %}
+{% block head_scripts %}{{ cm.head_assets() }}{% endblock %}
+{% block content %}
+<div class="stack admin">
+  <p><a href="{{ back }}" class="text-small admin-back">← zurück zum Kalender</a></p>
+  {% include "partials/calendar_day_form.html" %}
+</div>
+{% endblock %}

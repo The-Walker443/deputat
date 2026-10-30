@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/settings_fields.html" as sf %}
+{# Shown once right after creating/rotating the sensor token (POST response, never cached or stored). #}
+{% block head_scripts %}<meta name="referrer" content="no-referrer">{{ sf.head_assets() }}{% endblock %}
+
+{% block content %}
+<div class="stack admin">
+  <div class="banner banner-warn" role="alert">{{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Nur jetzt sichtbar.</strong> Das Token wird nicht gespeichert, nur sein Fingerabdruck.
+      Kopiere es jetzt{% if rotated %} – das bisherige Token ist ab sofort ungültig{% endif %}.</span>
+  </div>
+
+  <section class="card stack-sm" aria-labelledby="token-title">
+    <h2 class="card-title" id="token-title">{{ "Neues Sensor-Token" if rotated else "Sensor-Token" }}</h2>
+    <output class="token-box" id="token-value" data-token>{{ token }}</output>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" data-copy="#token-value">Token kopieren</button>
+    </div>
+    <p class="admin-help">Abfrage: <code>GET {{ sensors_url }}</code> mit dem Header
+      <code>Authorization: Bearer &lt;Token&gt;</code>.</p>
+  </section>
+
+  <section class="card stack-sm" aria-labelledby="ha-title">
+    <h2 class="card-title" id="ha-title">Home Assistant</h2>
+    <p class="admin-help">In <code>configuration.yaml</code> eintragen und das Token in <code>secrets.yaml</code> ablegen,
+      danach die REST-Integration neu laden. Läuft Home Assistant außerhalb des Heimnetzes, braucht der Abruf
+      zusätzlich ein Cloudflare-Access-Service-Token.</p>
+    <pre class="code-block" id="ha-yaml">{{ sf.ha_yaml(sensors_url, token) }}</pre>
+    <div class="btn-group">
+      <button type="button" class="btn btn-secondary" data-copy="#ha-yaml">YAML kopieren</button>
+    </div>
+  </section>
+
+  <a class="btn btn-secondary btn-block" href="/einstellungen#sensor">Fertig – zurück zu den Einstellungen</a>
+</div>
+{% endblock %}

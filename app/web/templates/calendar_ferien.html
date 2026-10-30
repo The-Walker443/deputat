@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/calendar_macros.html" as cm %}
+{# Ferien list with CRUD and ICS import (Konzept §7.1). #}
+{% block head_scripts %}{{ cm.head_assets() }}{% endblock %}
+
+{% block content %}
+{% set here = "/kalender/ferien?periode=" ~ period.id %}
+<div class="stack admin">
+  <p><a href="/kalender?periode={{ period.id }}" class="text-small admin-back">← zurück zum Kalender</a></p>
+
+  <section class="card" aria-labelledby="ferien-title">
+    <div class="card-header row-between">
+      <h2 class="card-title" id="ferien-title">Ferien {{ period.label }}</h2>
+      {% if periods|length > 1 %}
+      <form method="get" action="/kalender/ferien" class="admin-inline-form" data-autosubmit>
+        <label class="visually-hidden" for="fp-switch">Schuljahr</label>
+        <select id="fp-switch" name="periode">
+          {% for p in periods %}<option value="{{ p.id }}"{% if p.id == period.id %} selected{% endif %}>{{ p.label }}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-secondary btn-sm" type="submit">Wechseln</button></noscript>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if ferien %}
+    <div>
+      {% for f in ferien %}
+      <div class="ferien-item" id="ferien-{{ f.id }}">
+        <div class="ferien-head">
+          <div class="grow">
+            <p class="text-strong">{{ f.name }}</p>
+            <p class="text-small text-muted num">{{ f.start|weekday_de }} {{ f.start|date_de }} – {{ f.end|weekday_de }} {{ f.end|date_de }}</p>
+            <p class="text-xs text-muted">{{ ferien_kind_labels.get(f.kind, f.kind) }} · {{ werktage.get(f.id, 0) }} Werktage{% if f.source == "ics" %} · aus ICS{% endif %}{% if f.quelle_url %} · Quelle: {{ f.quelle_url|truncate(60) }}{% endif %}</p>
+          </div>
+          <form method="post" action="/kalender/ferien/{{ f.id }}/loeschen" data-confirm="„{{ f.name }}“ löschen?">
+            {{ cm.csrf(request) }}
+            <input type="hidden" name="next" value="{{ here }}">
+            <button type="submit" class="btn btn-ghost btn-icon" aria-label="„{{ f.name }}“ löschen" title="Löschen">{{ icon("x", 18) }}</button>
+          </form>
+        </div>
+        <details class="admin-details"{% if edit_id == f.id %} open{% endif %}>
+          <summary>Bearbeiten</summary>
+          <div class="mt-2">{{ cm.ferien_form(request, period, ferien_kind_choices, here, ferien=f, submit="Speichern") }}</div>
+        </details>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="text-small text-muted mt-2">Summe: {{ werktage.values()|sum }} Ferien-Werktage (ohne Feiertage).</p>
+    {% else %}
+    <div class="empty-state">
+      <p class="h3">Noch keine Ferien</p>
+      <p class="text-small">Importiere den Ferienkalender als ICS-Datei oder trage die Ferien von Hand ein.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="ferien-new">
+    <details class="admin-details"{% if not ferien %} open{% endif %}>
+      <summary id="ferien-new">Ferien von Hand eintragen</summary>
+      <div class="mt-3">{{ cm.ferien_form(request, period, ferien_kind_choices, here) }}</div>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="ferien-ics">
+    <details class="admin-details"{% if not ferien %} open{% endif %}>
+      <summary id="ferien-ics">ICS-Datei importieren</summary>
+      <div class="mt-3">{{ cm.ics_form(request, period, False, example_ics_hint) }}</div>
+    </details>
+  </section>
+</div>
+{% endblock %}

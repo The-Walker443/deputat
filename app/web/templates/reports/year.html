@@ -1,0 +1,175 @@
+{# Jahresbericht (Konzept §10.3). Rendered by app.services.reports.render_year_report. #}
+{% extends "reports/_layout.html" %}
+{% import "reports/_sections.html" as s %}
+{% block content %}
+<header class="report-head">
+  <div class="title">
+    <h1>Jahresbericht {{ period.label }}</h1>
+    <div class="subtitle">Arbeitszeitkonto Lehrkraft · {{ head.period_range }}</div>
+    <div style="margin-top: 6px">
+      {% if as_of < period.end %}<span class="badge draft">Zwischenstand {{ as_of|date_de }}</span>{% else %}<span class="badge ok">Periode beendet</span>{% endif %}
+      <span class="small muted">{{ closed_months }} von {{ months|length }} Monaten abgeschlossen</span>
+    </div>
+  </div>
+  {{ s.head_meta(head) }}
+</header>
+<p class="small">Prüf-Hash über alle Einträge der Periode: <span class="hash">{{ hash }}</span></p>
+
+<h2>Kennzahlen</h2>
+<div class="kpis">
+  <div class="kpi"><div class="label">J_soll (Periode)</div><div class="value">{{ ctx.j_soll|hm }}</div><div class="sub">{{ ctx.j_soll|dec }} h</div></div>
+  <div class="kpi"><div class="label">Soll bis {{ as_of|date_short }}</div><div class="value">{{ ctx.soll_bisher|hm or '0:00' }}</div><div class="sub">{{ ctx.soll_bisher|dec }} h</div></div>
+  <div class="kpi"><div class="label">Ist bis {{ as_of|date_short }}</div><div class="value">{{ ctx.ist_bisher|hm or '0:00' }}</div><div class="sub">{{ ctx.ist_bisher|dec }} h</div></div>
+  <div class="kpi"><div class="label">Saldo</div><div class="value">{{ s.signed(ctx.saldo_heute) }}</div><div class="sub">{{ '%.1f'|format(ctx.saldo_tage)|replace('.', ',') }} Arbeitstage</div></div>
+  <div class="kpi"><div class="label">Prognose Periodenende</div><div class="value">{{ s.signed(ctx.prognose_ende) }}</div><div class="sub">{{ ctx.prognose_ende|dec(plus=True) }} h</div></div>
+  <div class="kpi"><div class="label">Ferienarbeit bisher</div><div class="value">{{ ctx.ferienarbeit_bisher|hm or '0:00' }}</div><div class="sub">geplant {{ ctx.ferienarbeit_geplant|hm or '0:00' }}</div></div>
+  <div class="kpi"><div class="label">W_max je Schulwoche</div><div class="value">{{ ctx.w_max|hm }}</div><div class="sub">{{ ctx.w_max|dec }} h</div></div>
+  <div class="kpi"><div class="label">EU-12-Monats-Mittel</div><div class="value">{{ eu_hours_text }} h</div><div class="sub">Ampel {{ ctx.eu.ampel|ampel_de }}</div></div>
+  <div class="kpi"><div class="label">Schulwochen &gt; 48 h</div><div class="value">{{ ctx.schulwochen_ueber_48 }}</div><div class="sub">erfasste Zeit</div></div>
+  <div class="kpi"><div class="label">Unterrichtsanteil</div><div class="value">{{ '%.1f'|format(ctx.unterricht_share * 100)|replace('.', ',') }} %</div><div class="sub">{{ ctx.unterricht_seconds|hm or '0:00' }}</div></div>
+</div>
+
+<h2>Konto-Verlauf</h2>
+<figure class="chart">
+  {{ chart }}
+  <figcaption>
+    <div class="legend">
+      <span style="--lg: #2453c9">Saldo (Ist − Referenz-Soll)</span>
+      <span style="--lg: repeating-linear-gradient(90deg, #2453c9 0 5px, transparent 5px 9px)">Prognose bis Periodenende</span>
+      <span style="--lg: #dfe7f5">Ferien</span>
+      <span style="--lg: #aebfdc">Urlaubstage</span>
+      <span style="--lg: #15191f">Nulllinie = Referenz 40-h-Job</span>
+    </div>
+  </figcaption>
+</figure>
+
+<h2>Monate</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Monat</th><th class="num">Soll</th><th class="num">Ist</th><th class="num">Saldo</th><th class="num">kumuliert</th><th class="num">Ferienarbeit</th><th class="num">Mehrarbeit UStd</th><th>Abschluss</th></tr></thead>
+  <tbody>
+  {% for m in months %}
+    <tr>
+      <td class="nowrap">{{ m.label }}</td>
+      <td class="num">{{ m.soll|hm or '0:00' }}</td>
+      <td class="num">{{ m.ist|hm or '0:00' }}</td>
+      <td class="num">{{ s.signed(m.saldo) }}</td>
+      <td class="num">{{ s.signed(m.saldo_kumuliert) }}</td>
+      <td class="num">{{ m.ferienarbeit|hm or '–' }}</td>
+      <td class="num">{% if m.ustd_total %}{{ m.ustd_total|string|replace('.', ',') }}{% if m.ustd_ausgleichsfaehig %} ({{ m.ustd_ausgleichsfaehig|string|replace('.', ',') }} ausgl.){% endif %}{% else %}–{% endif %}</td>
+      <td>{{ m.status_label }}{% if m.hash %}<span class="note mono">{{ m.hash[:16] }}…</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Urlaubsmodus – beide Varianten</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Variante</th><th class="num">Saldo {{ as_of|date_short }}</th><th class="num">Prognose Ende</th><th class="num">Saldo Periodenende*</th><th class="num">Urlaubstage</th><th>Verteilung</th></tr></thead>
+  <tbody>
+  {% for c in compare %}
+    <tr>
+      <td>{{ c.label }}{% if c.massgeblich %} <strong>(maßgeblich)</strong>{% endif %}</td>
+      <td class="num">{{ s.signed(c.saldo_heute) }}</td>
+      <td class="num">{{ s.signed(c.prognose_ende) }}</td>
+      <td class="num">{{ s.signed(c.saldo_periodenende) }}</td>
+      <td class="num">{{ c.urlaub.assigned }}</td>
+      <td class="small">{% for f in c.urlaub.per_ferien if f.urlaubstage %}{{ f.name }} {{ f.urlaubstage }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small muted">* mit den bis heute erfassten Daten, ohne weitere Arbeit. Maßgeblich für die Berichte ist der eingestellte Modus ({{ head.leave_mode }}).</p>
+
+<div class="cols">
+  <section>
+    <h2>Urlaubszuordnung</h2>
+    <p class="small muted">{{ leave_info.mode_label }}: {{ leave_info.assigned }} von {{ leave_info.requested }} Tagen zugeordnet.</p>
+    {% if leave %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ferien</th><th class="num">Tage</th><th>Daten</th></tr></thead>
+      <tbody>
+      {% for l in leave %}<tr><td>{{ l.name }}</td><td class="num">{{ l.count }}</td><td class="small">{{ l.days }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% for h in leave_info.hinweise %}<p class="small">{{ h }}</p>{% endfor %}
+    {% for h in leave_info.info %}<p class="small">{{ h }}</p>{% endfor %}
+  </section>
+  <section>
+    <h2>Klassenfahrt A/B</h2>
+    <p class="small muted">{{ klassenfahrt.tage }} Klassenfahrt-Tag(e), Nachtbereitschaft {{ klassenfahrt.nachtbereitschaft|hm or '0:00' }}.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Variante</th><th class="num">Ist bisher</th><th class="num">Saldo</th><th class="num">Prognose</th></tr></thead>
+      <tbody>
+      {% for v in klassenfahrt.variants %}
+        <tr><td>{{ v.label }}{% if v.massgeblich %} <strong>(maßgeblich)</strong>{% endif %}</td><td class="num">{{ v.ist_bisher|hm or '0:00' }}</td><td class="num">{{ s.signed(v.saldo_heute) }}</td><td class="num">{{ s.signed(v.prognose_ende) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+
+<h2>Ferienarbeit je Ferienabschnitt</h2>
+{% if ferien %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Ferien</th><th>Zeitraum</th><th class="num">Werktage</th><th class="num">Urlaub</th><th class="num">Abbau-Kapazität</th><th class="num">Ferienarbeit</th><th class="num">geplant</th><th>Stand</th></tr></thead>
+  <tbody>
+  {% for f in ferien %}
+    <tr>
+      <td>{{ f.name }}</td><td class="nowrap">{{ f.range }}</td><td class="num">{{ f.werktage }}</td><td class="num">{{ f.urlaubstage }}</td>
+      <td class="num">{{ f.abbau|hm or '0:00' }}</td><td class="num">{{ f.arbeit|hm or '0:00' }}</td>
+      <td class="num">{% if f.geplant is not none %}{{ f.geplant|hm or '0:00' }}{% else %}–{% endif %}</td><td>{{ f.state }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Keine Ferien erfasst.</p>
+{% endif %}
+
+<div class="cols">
+  <section>
+    <h2>Kategorien</h2>
+    {{ s.categories_table(categories, categories_total) }}
+  </section>
+  <section>
+    <h2>Mehrarbeit je Monat</h2>
+    {% if mehrarbeit %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Monat</th><th class="num">angeordnet</th><th class="num">genehmigt</th><th class="num">Summe</th><th class="num">ausgleichsfähig</th></tr></thead>
+      <tbody>
+      {% for m in mehrarbeit %}
+        <tr><td>{{ m.label }}</td><td class="num">{{ m.mm.ustd_angeordnet|string|replace('.', ',') }}</td><td class="num">{{ m.mm.ustd_genehmigt|string|replace('.', ',') }}</td><td class="num">{{ m.mm.total|string|replace('.', ',') }}</td><td class="num">{{ m.mm.ausgleichsfaehig|string|replace('.', ',') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">Keine Mehrarbeit im engen Sinn erfasst.</p>
+    {% endif %}
+  </section>
+</div>
+
+<h2>Wochenübersicht</h2>
+{{ s.weeks_table(weeks, ctx.w_max) }}
+
+{% if include_entries %}
+<h2 class="page-break">Vollständige Eintragsliste</h2>
+<p class="small muted">Alle Einträge der Periode, Zeiten in Ortszeit (Europe/Berlin). Gelöschte Einträge sind durchgestrichen; sie bleiben Teil des Prüf-Hashes.</p>
+{{ s.entries_table(entries, entries|rejectattr('deleted')|rejectattr('is_pseudo')|sum(attribute='seconds')) }}
+
+<h2>Änderungsprotokoll</h2>
+{{ s.revisions_table(revisions) }}
+{% endif %}
+{% endblock %}

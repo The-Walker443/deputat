@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Heute" (Konzept §8.1). Timer actions run in static/js/timer.js (JSON API + offline queue);
+   tiles / entries / suggestions are HTMX partials refreshed on the body event "deputat-refresh". #}
+{% block head_scripts %}
+  <script src="{{ static_url('js/offline-queue.js') }}" defer></script>
+  <script src="{{ static_url('js/timer.js') }}" defer></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<span class="badge badge-warn sync-badge" data-sync-badge role="status" hidden>
+  <span class="spinner sync-spinner" aria-hidden="true"></span><span data-sync-text>wird synchronisiert</span>
+</span>
+{% endblock %}
+
+{% block content %}
+<div class="today stack" data-today data-state='{{ state|tojson }}' data-aktion="{{ aktion or '' }}">
+  <p class="today-date text-muted">
+    <span class="text-strong">{{ today|weekday_de(long=True) }}, {{ today|date_de }}</span>{% if kpis.day_label %} · {{ kpis.day_label }}{% endif %}
+    · <a class="today-absence-link" href="/kalender/tag/{{ today.isoformat() }}" data-absence-link>{{ icon("calendar", 14) }} Krank / abwesend</a>
+  </p>
+
+  {# Sync problems (conflict / expired Cloudflare Access session) are rendered here by timer.js. #}
+  <div class="today-sync stack-sm" data-sync-area aria-live="polite"></div>
+
+  <div class="banner banner-warn" data-long-banner role="status" hidden>
+    {{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Der Timer läuft seit mehr als 6 Stunden.</strong> Noch aktiv? Sonst bitte beenden
+      und die Endzeit im Eintrag korrigieren.</span>
+  </div>
+
+  <div class="banner banner-info today-midnight" data-midnight-banner role="alertdialog" aria-labelledby="midnight-title" hidden>
+    {{ icon("clock", 18) }}
+    <div class="banner-body stack-sm">
+      <p id="midnight-title"><strong>Der Timer läuft seit gestern.</strong>
+        Der Eintrag wird um 23:59:59 beendet. Fortsetzen ab 00:00?</p>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary btn-sm" data-midnight-continue>Fortsetzen ab 00:00</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-midnight-end>Nur beenden</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="banner banner-info" data-start-hint hidden>
+    {{ icon("info", 18) }}<span class="banner-body">Kategorie antippen, um den Timer zu starten.</span>
+  </p>
+
+  {% include "partials/today_timer.html" %}
+
+  <section class="today-section" aria-labelledby="tiles-title">
+    <h2 class="section-title" id="tiles-title">Kennzahlen</h2>
+    <div id="today-tiles" hx-get="/heute/teil/kacheln" hx-trigger="deputat-refresh from:body, every 120s"
+         hx-swap="innerHTML">
+      {% include "partials/today_tiles.html" %}
+    </div>
+  </section>
+
+  <div id="today-suggestions" hx-get="/heute/teil/vorschlaege" hx-trigger="deputat-refresh from:body"
+       hx-swap="innerHTML">
+    {% include "partials/today_suggestions.html" %}
+  </div>
+
+  <section class="today-section" aria-labelledby="entries-title">
+    <div class="row-between">
+      <h2 class="section-title" id="entries-title">Einträge heute</h2>
+      <a class="btn btn-ghost btn-sm" href="/eintraege/neu?next=/heute">{{ icon("plus", 16) }} Nachtragen</a>
+    </div>
+    <div id="today-entries" hx-get="/heute/teil/eintraege" hx-trigger="deputat-refresh from:body"
+         hx-swap="innerHTML">
+      {% include "partials/today_entries.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{# Day editor (HTMX panel below the month grid, or standalone page calendar_day.html). #}
+{% from "partials/icons.html" import icon %}
+<section class="card cal-day-editor" aria-labelledby="day-editor-title" data-day-editor>
+  <div class="row-between">
+    <h2 class="card-title" id="day-editor-title">{{ day|weekday_de(long=True) }}, {{ day|date_de }}</h2>
+    <a class="btn btn-ghost btn-icon btn-sm" href="{{ back }}" data-panel-close="[data-panel]" aria-label="Schließen">{{ icon("x", 18) }}</a>
+  </div>
+
+  {% if not period %}
+  <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">Dieser Tag liegt in keinem angelegten Schuljahr.</span></p>
+  {% else %}
+  <div class="cluster mb-3">
+    {% if row %}
+    <span class="badge cal-badge cal-{{ row.day_type }}">{{ day_type_labels.get(row.day_type, row.day_type) }}</span>
+    {% if row.holiday_name %}<span class="badge badge-outline">{{ row.holiday_name }}</span>{% endif %}
+    {% if ferien_name %}<span class="badge badge-outline">{{ ferien_name }}</span>{% endif %}
+    {% if row.absence_type %}<span class="badge badge-warn">{{ absence_labels.get(row.absence_type, row.absence_type) }}</span>{% endif %}
+    <span class="text-small text-muted">Soll {{ row.soll_seconds|hm }}</span>
+    {% endif %}
+  </div>
+
+  {% if row and row.absence_type == "fortbildung" %}
+  <div class="banner {% if fortbildung_seconds %}banner-info{% else %}banner-warn{% endif %}" data-fortbildung-hint>
+    {{ icon("alert", 18) }}
+    <span class="banner-body">
+      {% if fortbildung_seconds %}Fortbildung erfasst: {{ fortbildung_seconds|hm }} h.{% else %}<strong>Noch keine Fortbildungszeit erfasst.</strong>
+      Das Soll bleibt bestehen – ohne Eintrag zählt der Tag mit 0 Stunden.{% endif %}
+      {% if fortbildung_category_id %}<a href="/eintraege/neu?datum={{ day.isoformat() }}&amp;kategorie={{ fortbildung_category_id }}&amp;next=/kalender/tag/{{ day.isoformat() }}">Fortbildungszeit erfassen</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/kalender/tag/{{ day.isoformat() }}" class="stack-sm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+
+    {% if manual_mode %}
+      {% if is_leave_candidate or (override and override.urlaub_manuell) %}
+      <fieldset class="fieldset">
+        <legend>Urlaub (manuelle Zuordnung)</legend>
+        {% set is_urlaub = override and override.urlaub_manuell %}
+        <label class="check"><input type="checkbox" name="urlaub_manuell" value="1" data-leave-toggle{% if is_urlaub %} checked{% endif %}> Urlaubstag</label>
+        {% if leave %}
+        <p class="field-hint">Noch zuzuordnen: <strong class="num" data-leave-remaining data-base="{{ leave.noch_zuzuordnen - leave.excess }}" data-initial="{{ '1' if is_urlaub else '0' }}">{{ leave.noch_zuzuordnen if leave.noch_zuzuordnen > 0 else 0 }}</strong> von {{ leave.requested }}.</p>
+        <p class="field-error" data-leave-excess{% if not leave.excess %} hidden{% endif %}>{% if leave.excess %}{{ leave.excess }} Urlaubstag(e){% else %}Urlaubstage{% endif %} zu viel ausgewählt – bitte andere Tage abwählen.</p>
+        {% endif %}
+      </fieldset>
+      {% else %}
+      <p class="field-hint">Urlaub ist nur an Ferien- oder unterrichtsfreien Werktagen möglich.</p>
+      {% endif %}
+    {% else %}
+      {% if override and override.urlaub_manuell %}<input type="hidden" name="urlaub_manuell" value="1">{% endif %}
+      {% if row and row.absence_type == "urlaub" %}
+      <p class="field-hint">Urlaubstag nach Modus „{{ leave_mode_label }}“ (automatisch zugeordnet).</p>
+      {% endif %}
+    {% endif %}
+
+    <div class="field">
+      <label for="d-abs">Abwesenheit</label>
+      <select id="d-abs" name="absence_type">
+        <option value="">keine</option>
+        {% for value, label in absence_choices %}
+        <option value="{{ value }}"{% if override and override.absence_type == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <span class="field-hint">Krank: Soll bleibt, Konto neutral (Einstellung). Fortbildung: Soll bleibt – die Fortbildungszeit zusätzlich als Eintrag (F) erfassen. Dienstbefreiung, Sonderurlaub, Elternzeit: Soll 0.</span>
+    </div>
+
+    <div class="field">
+      <label for="d-type">Tagestyp</label>
+      <select id="d-type" name="day_type">
+        <option value="">automatisch (Kalender)</option>
+        {% for value, label in day_type_choices %}
+        <option value="{{ value }}"{% if override and override.day_type == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="d-note">Notiz</label>
+      <textarea id="d-note" name="note" maxlength="500" rows="2" placeholder="Keine Namen von Kindern oder Eltern – z. B. „Zeugnistag“">{{ override.note if override and override.note else '' }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      {% if override %}
+      <button type="submit" name="aktion" value="entfernen" class="btn btn-ghost">Eingaben entfernen</button>
+      {% endif %}
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+  <p class="text-small text-muted mt-2"><a class="admin-back" href="/eintraege?von={{ day.isoformat() }}&amp;bis={{ day.isoformat() }}">Zeiteinträge dieses Tages</a></p>
+  {% endif %}
+</section>

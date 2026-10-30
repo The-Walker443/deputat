@@ -1,0 +1,56 @@
+{% from "partials/icons.html" import icon %}
+{# Close confirmation (Konzept §10.1). Rendered inside <dialog id="close-dialog"> (months_detail.html, opened by
+   months.js) and on the no-JS fallback page months_close.html. Needs: ov, ym, items, close_error, close_form. #}
+{% set forcible = items|rejectattr("item.blocking")|list %}
+<form method="post" action="/monate/{{ ym }}/abschliessen" class="months-close-form stack" data-close-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+  <h2 class="h2" id="close-dialog-title">{{ ov.label }} abschließen?</h2>
+
+  {% if close_error %}
+  <div class="banner banner-danger" role="alert">
+    {{ icon("alert", 18) }}<span class="banner-body">{{ close_error }}</span>
+  </div>
+  {% endif %}
+
+  <div class="months-close-explain stack-sm">
+    <p>Beim Abschluss passiert Folgendes:</p>
+    <ul class="months-bullets">
+      <li>Soll, Ist, Saldo und Mehrarbeit des Monats werden festgeschrieben.</li>
+      <li>Über alle Einträge des Monats wird ein <strong>Prüf-Hash (SHA-256)</strong> berechnet.</li>
+      <li>Der Monatsbericht wird als Datei gespeichert und ändert sich danach nicht mehr.</li>
+      <li>Alle Einträge des Monats werden <strong>gesperrt</strong>. Spätere Korrekturen sind nur noch mit
+        Begründung möglich; der Monat wird dann als „nachträglich korrigiert“ markiert und der alte Hash bleibt
+        sichtbar.</li>
+      <li>Ein abgeschlossener Monat kann <strong>nicht wieder geöffnet</strong> werden.</li>
+    </ul>
+  </div>
+
+  {% if forcible %}
+  <div class="banner banner-warn" role="note">
+    {{ icon("alert", 18) }}
+    <span class="banner-body">
+      Es {{ "ist" if forcible|length == 1 else "sind" }} noch <strong>{{ forcible|length }} offene{{ "r" if forcible|length == 1 else "" }} Punkt{{ "" if forcible|length == 1 else "e" }}</strong> vorhanden
+      ({% if forcible|length > 1 %}z. B. {% endif %}{{ forcible[0].item.message|trim(".") }}). Abschließen ist nur mit Begründung möglich; sie wird im Bericht vermerkt.
+    </span>
+  </div>
+  <label class="check">
+    <input type="checkbox" name="trotzdem" value="1" data-close-force{% if close_form.trotzdem %} checked{% endif %}>
+    <span>Trotz offener Punkte abschließen</span>
+  </label>
+  <div class="field" data-close-note{% if not close_form.trotzdem %} hidden{% endif %}>
+    <label for="close-begruendung-{{ ym }}">Begründung</label>
+    <textarea id="close-begruendung-{{ ym }}" name="begruendung" rows="3" maxlength="2000"
+              placeholder="z. B. Tage ohne Einträge waren Ausgleichstage nach der Klassenfahrt">{{ close_form.begruendung }}</textarea>
+  </div>
+  {% endif %}
+
+  <label class="check months-confirm">
+    <input type="checkbox" name="bestaetigt" value="1" required>
+    <span>Ich habe die Einträge geprüft und verstanden, dass sie nach dem Abschluss gesperrt sind.</span>
+  </label>
+
+  <div class="btn-group months-dialog-actions">
+    <button type="submit" class="btn btn-primary">{{ icon("check", 18) }} Jetzt abschließen</button>
+    <a class="btn btn-ghost" href="/monate/{{ ym }}" data-dialog-close>Abbrechen</a>
+  </div>
+</form>

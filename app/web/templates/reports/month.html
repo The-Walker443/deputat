@@ -1,0 +1,95 @@
+{# Monatsbericht (Konzept §10.2). Rendered by app.services.reports.render_month_report. #}
+{% extends "reports/_layout.html" %}
+{% import "reports/_sections.html" as s %}
+{% block content %}
+<header class="report-head">
+  <div class="title">
+    <h1>Monatsbericht {{ ov.label }}</h1>
+    <div class="subtitle">Arbeitszeitkonto Lehrkraft · {{ head.period_label }}</div>
+    <div style="margin-top: 6px">
+      {% if close %}
+        <span class="badge {{ 'warn' if close.status == 'nachtraeglich_korrigiert' else 'ok' }}">{{ close_status_label }}</span>
+        <span class="small muted">abgeschlossen am {{ close.closed_at|datetime_de }}{% if close.corrected_at %}, korrigiert am {{ close.corrected_at|datetime_de }}{% endif %}</span>
+      {% else %}
+        <span class="badge draft">vorläufig – Monat nicht abgeschlossen</span>
+      {% endif %}
+    </div>
+  </div>
+  {{ s.head_meta(head) }}
+</header>
+<p class="small">Prüf-Hash{% if preliminary %} (vorläufig, aktueller Datenstand){% endif %}: <span class="hash">{{ hash }}</span></p>
+
+{% if preliminary %}
+<div class="notice draft">Dieser Bericht zeigt den aktuellen Datenstand eines nicht abgeschlossenen Monats.{% if ov.laufend %} Der Monat läuft noch; die Zahlen umfassen die Tage bis {{ ov.stichtag|date_de }}.{% endif %}</div>
+{% endif %}
+{% if close_note or forced_items %}
+<div class="notice">
+  <strong>Abschluss trotz offener Punkte.</strong>{% if close_note %} Begründung: „{{ close_note }}“{% endif %}
+  {% if forced_items %}<ul>{% for i in forced_items %}<li>{{ i.message }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+{% if hash_history %}
+<div class="notice">
+  <strong>Nachträglich korrigiert.</strong> Frühere Prüf-Hashes:
+  <ul>
+  {% for h in hash_history %}
+    <li><span class="hash">{{ h.hash }}</span> – gültig ab {{ h.closed_at_text }}, ersetzt am {{ h.replaced_at_text }}{% if h.reason %} („{{ h.reason }}“){% endif %}</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<h2>Kennzahlen</h2>
+<div class="kpis">
+  <div class="kpi"><div class="label">Soll</div><div class="value">{{ ov.soll|hm or '0:00' }}</div><div class="sub">{{ ov.soll|dec }} h{% if ov.soll != ov.soll_monat_gesamt %} · ganzer Monat {{ ov.soll_monat_gesamt|hm }}{% endif %}</div></div>
+  <div class="kpi"><div class="label">Ist</div><div class="value">{{ ov.ist|hm or '0:00' }}</div><div class="sub">{{ ov.ist|dec }} h{% if ov.krank_gutschrift %} · davon Krank-Gutschrift {{ ov.krank_gutschrift|hm }}{% endif %}</div></div>
+  <div class="kpi"><div class="label">Saldo Monat</div><div class="value">{{ s.signed(ov.saldo) }}</div><div class="sub">{{ ov.saldo|dec(plus=True) }} h</div></div>
+  <div class="kpi"><div class="label">Saldo kumuliert</div><div class="value">{{ s.signed(ov.saldo_kumuliert) }}</div><div class="sub">seit {{ head.period_range[:10] }}, Stand {{ ov.stichtag|date_de }}</div></div>
+  <div class="kpi"><div class="label">Ferienarbeit</div><div class="value">{{ ov.ferienarbeit|hm or '0:00' }}</div><div class="sub">{{ ov.ferienarbeit|dec }} h</div></div>
+  <div class="kpi"><div class="label">Wochenende/Feiertag</div><div class="value">{{ ov.wochenend_feiertag_arbeit|hm or '0:00' }}</div><div class="sub">{{ ov.wochenend_feiertag_arbeit|dec }} h</div></div>
+  <div class="kpi"><div class="label">EU-12-Monats-Mittel</div><div class="value">{{ eu_hours_text }} h</div><div class="sub">Ampel {{ ov.eu.ampel|ampel_de }} · {{ ov.eu.window_start|date_de }} – {{ ov.eu.window_end|date_de }}</div></div>
+  <div class="kpi"><div class="label">Einträge</div><div class="value">{{ ov.entries_count }}</div><div class="sub">aktiv{% if entries_deleted %}, zusätzlich {{ entries_deleted }} gelöscht{% endif %}</div></div>
+</div>
+{% if close %}
+<p class="small muted">Beim Abschluss gespeichert: Soll {{ close.soll_seconds|hm }}, Ist {{ close.ist_seconds|hm }}, Saldo {{ close.saldo_seconds|hm(plus=True) }}.</p>
+{% endif %}
+
+<div class="cols">
+  <section>
+    <h2>Kategorien</h2>
+    {{ s.categories_table(ov.categories, ov.categories|sum(attribute='seconds')) }}
+  </section>
+  <section>
+    <h2>Mehrarbeit (Art. 87 BayBG)</h2>
+    <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr><td>UStd angeordnet</td><td class="num">{{ ov.mehrarbeit.ustd_angeordnet|string|replace('.', ',') }}</td></tr>
+        <tr><td>UStd genehmigt</td><td class="num">{{ ov.mehrarbeit.ustd_genehmigt|string|replace('.', ',') }}</td></tr>
+        <tr><td>Summe</td><td class="num">{{ ov.mehrarbeit.ustd_total|string|replace('.', ',') }}</td></tr>
+        {% if ov.mehrarbeit.ustd_vertretung_erhalten %}<tr><td>Vertretung erhalten (gegengerechnet)</td><td class="num">{{ ov.mehrarbeit.ustd_vertretung_erhalten|string|replace('.', ',') }}</td></tr>{% endif %}
+        <tr class="total"><td>ausgleichsfähig</td><td class="num">{{ ov.mehrarbeit.ustd_ausgleichsfaehig|string|replace('.', ',') }}</td></tr>
+        <tr><td>Status</td><td class="num">{{ ov.mehrarbeit.status_label }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+    {% if ov.mehrarbeit.hinweis %}<p class="small">{{ ov.mehrarbeit.hinweis }}</p>{% endif %}
+    {% if ov.mehrarbeit.note %}<p class="small muted">Notiz: {{ ov.mehrarbeit.note }}</p>{% endif %}
+    {% if mehrarbeit_entries %}
+    <p class="small muted">Vertretungsstunden: {% for e in mehrarbeit_entries %}{{ e.date|date_short }} {{ e.von }} ({{ e.dauer }}, {{ e.flags }}){% if not loop.last %}; {% endif %}{% endfor %}</p>
+    {% endif %}
+    <p class="small muted">UStd = Minuten / 45, auf 0,5 gerundet. Ausgleichsfähig erst ab mehr als 3 UStd im Monat (Bagatellgrenze).</p>
+  </section>
+</div>
+
+<h2>Wochenübersicht</h2>
+{{ s.weeks_table(ov.weeks, ov.w_max) }}
+
+<h2 class="page-break">Vollständige Eintragsliste</h2>
+<p class="small muted">Alle Einträge des Monats in zeitlicher Reihenfolge, Zeiten in Ortszeit (Europe/Berlin). Gelöschte Einträge sind durchgestrichen; sie bleiben Teil des Prüf-Hashes.</p>
+{{ s.entries_table(entries, entries_total) }}
+
+<h2>Änderungsprotokoll</h2>
+<p class="small muted">Revisionen der Einträge dieses Monats (vollständiger Vorzustand ist in der Datenbank gespeichert).</p>
+{{ s.revisions_table(revisions) }}
+{% endblock %}

@@ -1,0 +1,148 @@
+{# Shared building blocks of the Kalender screens (app/web/calendar.py). #}
+{% from "partials/icons.html" import icon %}
+
+{% macro head_assets() -%}
+  <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+  <script src="{{ static_url('js/admin.js') }}" defer></script>
+  <script src="{{ static_url('js/calendar.js') }}" defer></script>
+{%- endmacro %}
+
+{% macro csrf(request) -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+{%- endmacro %}
+
+{# Leave plan summary: mode, assigned/requested, "noch zuzuordnen", hints, per-ferien table. #}
+{% macro leave_card(leave, manual_mode, compact=False) %}
+{% if leave %}
+<div class="stack-sm" data-leave-summary>
+  <div class="cluster">
+    <span class="badge badge-primary">{{ leave.mode_label }}</span>
+    <span class="text-small">
+      <strong class="num">{{ leave.assigned }}</strong> von <span class="num">{{ leave.requested }}</span> Urlaubstagen zugeordnet
+    </span>
+  </div>
+  {% if manual_mode %}
+    {# Open days are an info (leave.info), not a warning; too many / impossible days come as hinweise. #}
+    {% if leave.noch_zuzuordnen > 0 %}
+    <p class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">Noch zuzuordnen: <strong class="num" data-noch-zuzuordnen>{{ leave.noch_zuzuordnen }}</strong> Urlaubstag(e). Ferientage im Kalender antippen und „Urlaubstag“ wählen.</span></p>
+    {% elif not leave.excess %}
+    <p class="text-small text-success">{{ icon("check", 16) }} Alle Urlaubstage sind zugeordnet.</p>
+    {% endif %}
+  {% endif %}
+  {% for h in leave.hinweise %}
+    <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ h }}</span></p>
+  {% endfor %}
+  {% if not compact and leave.per_ferien %}
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Ferien</th><th class="num">mögliche Tage</th><th class="num">Urlaub</th></tr></thead>
+      <tbody>
+        {% for f in leave.per_ferien %}
+        <tr>
+          <td>{{ f.name }}<br><span class="text-xs text-muted">{{ f.start|date_short }}–{{ f.end|date_de }}</span></td>
+          <td class="num">{{ f.kandidaten }}</td>
+          <td class="num"><strong>{{ f.urlaubstage }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if leave.ausserhalb_ferien %}
+      <tfoot><tr><td>außerhalb der Ferien</td><td></td><td class="num">{{ leave.ausserhalb_ferien }}</td></tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<p class="text-small text-muted">Die Urlaubszuordnung ist gerade nicht verfügbar.</p>
+{% endif %}
+{% endmacro %}
+
+{# Konzept §6.2: both automatic modes side by side. #}
+{% macro compare_card(compare) %}
+<div class="stack-sm">
+  <p class="text-small text-muted">
+    Die App rechnet immer beide Varianten. Maßgeblich für Berichte ist der eingestellte Urlaubsmodus.
+    Bis zum Jahresende gleichen sich beide Varianten aus – sie unterscheiden sich nur im Verlauf.
+  </p>
+  {% if compare %}
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Variante</th><th class="num">Saldo heute</th><th class="num">Prognose Ende</th></tr></thead>
+      <tbody>
+        {% for c in compare %}
+        <tr{% if c.massgeblich %} class="admin-row-current"{% endif %}>
+          <td>{{ c.label }}{% if c.massgeblich %} <span class="badge badge-primary">maßgeblich</span>{% endif %}</td>
+          <td class="num {{ 'is-positive' if (c.saldo_heute or 0) > 0 else ('is-negative' if (c.saldo_heute or 0) < 0 else '') }}">{{ c.saldo_heute|hm(plus=True) if c.saldo_heute is not none else "–" }}</td>
+          <td class="num">{{ c.prognose_ende|hm(plus=True) if c.prognose_ende is not none else "–" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-small text-muted">Der Vergleich ist erst verfügbar, wenn Ferien erfasst sind.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Form for a new ferien block. #}
+{% macro ferien_form(request, period, kinds, next_url, ferien=None, submit="Ferien anlegen") %}
+<form method="post" action="{{ '/kalender/ferien/' ~ ferien.id if ferien else '/kalender/ferien' }}" class="stack-sm">
+  {{ csrf(request) }}
+  <input type="hidden" name="periode" value="{{ period.id }}">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <div class="field">
+    <label for="fn-{{ ferien.id if ferien else 'neu' }}">Name</label>
+    <input id="fn-{{ ferien.id if ferien else 'neu' }}" name="name" required maxlength="100" value="{{ ferien.name if ferien else '' }}" placeholder="z. B. Herbstferien">
+  </div>
+  <div class="form-row">
+    <div class="field">
+      <label for="fs-{{ ferien.id if ferien else 'neu' }}">Erster Ferientag</label>
+      <input id="fs-{{ ferien.id if ferien else 'neu' }}" type="date" name="start" required value="{{ ferien.start.isoformat() if ferien else '' }}" min="{{ period.start.isoformat() }}" max="{{ period.end.isoformat() }}">
+    </div>
+    <div class="field">
+      <label for="fe-{{ ferien.id if ferien else 'neu' }}">Letzter Ferientag</label>
+      <input id="fe-{{ ferien.id if ferien else 'neu' }}" type="date" name="end" required value="{{ ferien.end.isoformat() if ferien else '' }}" min="{{ period.start.isoformat() }}">
+    </div>
+  </div>
+  <div class="field">
+    <label for="fk-{{ ferien.id if ferien else 'neu' }}">Art</label>
+    <select id="fk-{{ ferien.id if ferien else 'neu' }}" name="kind">
+      <option value="">automatisch aus dem Namen</option>
+      {% for value, label in kinds %}
+      <option value="{{ value }}"{% if ferien and ferien.kind == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="fq-{{ ferien.id if ferien else 'neu' }}">Quelle (optional)</label>
+    <input id="fq-{{ ferien.id if ferien else 'neu' }}" name="quelle_url" maxlength="500" value="{{ (ferien.quelle_url or '') if ferien else '' }}" placeholder="z. B. Link zum Ferienkalender des Kultusministeriums">
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ submit }}</button>
+  </div>
+</form>
+{% endmacro %}
+
+{# ICS upload form (step 2 of the wizard and the ferien page). #}
+{% macro ics_form(request, period, wizard, example_hint) %}
+<form method="post" action="/kalender/ics/vorschau" enctype="multipart/form-data" class="stack-sm">
+  {{ csrf(request) }}
+  <input type="hidden" name="periode" value="{{ period.id }}">
+  {% if wizard %}<input type="hidden" name="wizard" value="1">{% endif %}
+  <div class="field">
+    <label for="ics-datei">ICS-Datei mit den Ferienterminen</label>
+    <input id="ics-datei" type="file" name="datei" accept=".ics,text/calendar" required>
+    <span class="field-hint">z. B. Ferienkalender des Bayerischen Kultusministeriums oder von schulferien.org. Du siehst vor dem Import eine Vorschau.</span>
+  </div>
+  <div class="field">
+    <label for="ics-quelle">Quelle (optional)</label>
+    <input id="ics-quelle" name="quelle_url" maxlength="500" placeholder="Woher stammt die Datei?">
+  </div>
+  <label class="check"><input type="checkbox" name="ersetzen" value="1"> Überschneidende, bereits erfasste Ferien ersetzen</label>
+  <p class="banner banner-warn">{{ icon("alert", 18) }}<span class="banner-body">{{ example_hint }}</span></p>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon("upload", 18) }} Vorschau anzeigen</button>
+  </div>
+</form>
+{% endmacro %}

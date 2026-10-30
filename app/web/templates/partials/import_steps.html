@@ -1,0 +1,12 @@
+{# Wizard progress (Konzept §12). Needs: steps, step (1-based; 0 = none). #}
+{% if step %}
+<ol class="import-steps" aria-label="Fortschritt">
+  {% for label in steps %}
+  {% set n = loop.index %}
+  <li class="import-step{% if n < step %} is-done{% elif n == step %} is-current{% endif %}"{% if n == step %} aria-current="step"{% endif %}>
+    <span class="import-step-no" aria-hidden="true">{{ n }}</span>
+    <span class="import-step-label">{{ label }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}

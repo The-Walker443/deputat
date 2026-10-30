@@ -1,0 +1,76 @@
+{# Slot editor (HTMX panel below the grid, or standalone page timetable_slot.html). #}
+{% from "partials/icons.html" import icon %}
+<section class="card cal-day-editor" aria-labelledby="slot-title" data-slot-editor>
+  <div class="row-between">
+    <h2 class="card-title" id="slot-title">{{ weekday_name }}, {{ raster.label if raster and raster.label else slot_no ~ ". Stunde" }}</h2>
+    <a class="btn btn-ghost btn-icon btn-sm" href="{{ back }}" data-panel-close="[data-panel]" aria-label="Schließen">{{ icon("x", 18) }}</a>
+  </div>
+  <p class="text-small text-muted mb-3">{{ tt.label }}{% if raster %} · Zeitraster {{ raster.start }}–{{ raster.end }}{% else %} · Stunde {{ slot_no }} (nicht im Zeitraster){% endif %}</p>
+
+  {% if error %}<p class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></p>{% endif %}
+
+  <form method="post" action="/stundenplan/{{ tt.id }}/stunde" class="stack-sm" data-slot-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="tag" value="{{ weekday }}">
+    <input type="hidden" name="nr" value="{{ slot_no }}">
+
+    <div class="field">
+      <label for="s-art">Art</label>
+      <select id="s-art" name="art" data-slot-kind>
+        <option value=""{% if not values.art %} selected{% endif %}>– leer (kein Eintrag) –</option>
+        {% for value, label in kind_choices %}
+        <option value="{{ value }}"{% if values.art == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <span class="field-hint">Freistunden zählen nicht; Unterricht, Aufsicht, Sprechstunde und Konferenz erzeugen an Schultagen Vorschläge.</span>
+    </div>
+
+    <div class="form-row" data-slot-details>
+      <div class="field">
+        <label for="s-klasse">Klasse</label>
+        {% if klassen %}
+        <select id="s-klasse" name="klasse">
+          <option value="">–</option>
+          {% for k in klassen %}<option value="{{ k }}"{% if values.klasse == k %} selected{% endif %}>{{ k }}</option>{% endfor %}
+          {% if values.klasse and values.klasse not in klassen %}<option value="{{ values.klasse }}" selected>{{ values.klasse }}</option>{% endif %}
+        </select>
+        {% else %}
+        <input id="s-klasse" name="klasse" maxlength="16" value="{{ values.klasse }}" placeholder="z. B. 3b">
+        {% endif %}
+      </div>
+      <div class="field">
+        <label for="s-fach">Fach</label>
+        <input id="s-fach" name="fach" maxlength="64" value="{{ values.fach }}" list="s-faecher" autocomplete="off">
+        <datalist id="s-faecher">{% for f in faecher %}<option value="{{ f }}"></option>{% endfor %}</datalist>
+      </div>
+    </div>
+
+    <div class="field" data-slot-details>
+      <label for="s-cat">Kategorie</label>
+      <select id="s-cat" name="category_id">
+        <option value="">Standard für die Art (Unterricht → U, Aufsicht → AV, Sprechstunde → E, Konferenz → KO)</option>
+        {% for g in category_groups %}
+        <optgroup label="{{ g.main.code }} · {{ g.main.name }}">
+          <option value="{{ g.main.id }}"{% if values.category_id == g.main.id|string %} selected{% endif %}>{{ g.main.name }}</option>
+          {% for c in g.children %}
+          <option value="{{ c.id }}"{% if values.category_id == c.id|string %} selected{% endif %}>– {{ c.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="field"><label for="s-start">Beginn</label><input id="s-start" type="time" name="start" value="{{ values.start }}"{% if not raster %} required{% endif %}></div>
+      <div class="field"><label for="s-end">Ende</label><input id="s-end" type="time" name="end" value="{{ values.end }}"{% if not raster %} required{% endif %}></div>
+    </div>
+    {% if raster %}<p class="field-hint">Vorbelegt aus dem Zeitraster; nur bei Abweichungen ändern.</p>{% endif %}
+
+    <div class="form-actions">
+      {% if slot %}
+      <button type="submit" name="aktion" value="loeschen" class="btn btn-ghost" formnovalidate data-confirm="Diese Stunde aus dem Stundenplan entfernen?">Leeren</button>
+      {% endif %}
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</section>

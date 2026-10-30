@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block content %}
+<section class="empty-state">
+  {{ icon("wifi-off", 48) }}
+  <h2 class="h2">Keine Verbindung</h2>
+  <p class="text-muted">Diese Seite ist offline nicht verfügbar. Timer-Aktionen auf „Heute“ werden
+    zwischengespeichert und übertragen, sobald wieder eine Verbindung besteht.</p>
+  <a class="btn btn-primary" href="/heute">Zu „Heute“</a>
+</section>
+{% endblock %}

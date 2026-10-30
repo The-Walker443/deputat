@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Schreiben erstellen" (Konzept §11): parameters (GET form) -> preview -> edit -> save (POST).
+   Owner: app/web/documents.py. The notice at the top is enforced by the service on render and save. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/documents.css') }}">
+  <script src="{{ static_url('js/documents.js') }}" defer></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/schreiben">{{ icon("chevron-left", 16) }} Übersicht</a>
+{% endblock %}
+
+{% block content %}
+<div class="documents documents-new stack">
+  <nav class="documents-switch no-print" aria-label="Schreiben-Typ">
+    {% for t in types %}
+    <a class="chip{% if t.type == doc_type %} is-active{% endif %}" href="/schreiben/neu?typ={{ t.type }}"
+       {%- if t.type == doc_type %} aria-current="page"{% endif %}>{{ t.label }}</a>
+    {% endfor %}
+  </nav>
+
+  <p class="text-muted text-small">{{ info.zweck }}.</p>
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+  {% endif %}
+
+  <form method="get" action="/schreiben/neu" class="card stack-sm documents-params no-print" aria-labelledby="params-title">
+    <h2 class="card-title" id="params-title">Angaben</h2>
+    <input type="hidden" name="typ" value="{{ doc_type }}">
+    {% if info.uses_month %}
+    <div class="field">
+      <label for="f-monat">Monat der Mehrarbeit</label>
+      <input id="f-monat" type="month" name="monat" value="{{ params.monat or '' }}" placeholder="JJJJ-MM" required>
+      <span class="field-hint">Unterrichtseinträge mit „Vertretung angeordnet/genehmigt“ in diesem Monat.</span>
+    </div>
+    {% else %}
+    <div class="form-row">
+      <div class="field">
+        <label for="f-von">Zeitraum von</label>
+        <input id="f-von" type="date" name="von" value="{{ params.von or '' }}">
+      </div>
+      <div class="field">
+        <label for="f-bis">bis</label>
+        <input id="f-bis" type="date" name="bis" value="{{ params.bis or '' }}">
+      </div>
+    </div>
+    <p class="field-hint">Leer = Beginn der Kontoperiode bis gestern.</p>
+    {% endif %}
+    <details class="documents-more"{% if params.ort or params.adressat or params.dienstweg or params.abdruck or params.datum %} open{% endif %}>
+      <summary>Ort, Datum, Adressat, Dienstweg</summary>
+      <div class="stack-sm mt-3">
+        {% for key, label in override_fields %}
+        <div class="field">
+          <label for="f-{{ key }}">{{ label }}</label>
+          <input id="f-{{ key }}" type="text" name="{{ key }}" value="{{ params[key] or '' }}"
+                 placeholder="{{ defaults[key] or '' }}" maxlength="300" autocomplete="off">
+        </div>
+        {% endfor %}
+        <p class="field-hint">Leer = Vorschlag (grau); „-“ bei Dienstweg/Abdruck = weglassen. Name und Schule
+          kommen aus den Einstellungen.</p>
+      </div>
+    </details>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-secondary">Vorschau aktualisieren</button>
+    </div>
+  </form>
+
+  {% for w in warnings %}
+  <div class="banner banner-warn" role="status">{{ icon("info", 18) }}<span class="banner-body">{{ w }}</span></div>
+  {% endfor %}
+
+  <section aria-labelledby="preview-title">
+    <h2 class="section-title no-print" id="preview-title">Vorschau</h2>
+    <div id="letter-preview" aria-live="polite">
+      {% include "partials/documents_preview.html" %}
+    </div>
+  </section>
+
+  {% if can_save or markdown %}
+  <form method="post" action="/schreiben/neu" class="card stack-sm documents-edit no-print" aria-labelledby="edit-title">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    {% for key in ("typ", "von", "bis", "monat", "ort", "datum", "adressat", "dienstweg", "abdruck") %}
+    {% if params[key] %}<input type="hidden" name="{{ key }}" value="{{ params[key] }}">{% endif %}
+    {% endfor %}
+    <h2 class="card-title" id="edit-title">Text bearbeiten und speichern</h2>
+    <div class="field">
+      <label for="f-text">Text (Markdown)</label>
+      <textarea id="f-text" name="text" class="documents-text" rows="18" spellcheck="true">{{ markdown }}</textarea>
+      <span class="field-hint">Der Hinweis „{{ notice }}“ steht immer am Anfang und wird beim Speichern wieder eingefügt.</span>
+    </div>
+    <div class="field">
+      <label for="f-notiz">Notiz (nur für dich)</label>
+      <input id="f-notiz" type="text" name="notiz" value="{{ note }}" maxlength="2000" autocomplete="off">
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" hx-post="/schreiben/vorschau" hx-include="#f-text"
+              hx-target="#letter-preview" hx-swap="innerHTML" data-preview-button>Vorschau aus Text</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if placeholders %}
+  <details class="card documents-placeholders no-print">
+    <summary>Platzhalter und eingesetzte Werte</summary>
+    <div class="table-wrap mt-3">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Platzhalter</th><th scope="col">Bedeutung</th><th scope="col">Wert</th></tr></thead>
+        <tbody>
+          {% for p in placeholders %}
+          <tr>
+            <td><code>{{ "{{" ~ p.key ~ "}}" }}</code></td>
+            <td>{{ p.label }}</td>
+            <td class="documents-value">{% if "\n" in p.value %}<span class="text-muted">(Tabelle/Liste, siehe Vorschau)</span>{% else %}{{ p.value }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

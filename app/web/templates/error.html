@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block content %}
+<section class="empty-state">
+  {{ icon("alert", 48) }}
+  <h2 class="h2">
+    {%- if status_code == 404 %}Seite nicht gefunden
+    {%- elif status_code == 403 %}Zugriff verweigert
+    {%- elif status_code == 401 %}Nicht angemeldet
+    {%- else %}Fehler {{ status_code }}{% endif -%}
+  </h2>
+  {% if detail and detail not in ("Not Found", "Forbidden", "Unauthorized", "Method Not Allowed") %}
+  <p class="text-muted">{{ detail }}</p>
+  {% elif status_code == 404 %}
+  <p class="text-muted">Diese Seite gibt es (noch) nicht.</p>
+  {% endif %}
+  <a class="btn btn-secondary" href="/heute">Zu „Heute“</a>
+</section>
+{% endblock %}

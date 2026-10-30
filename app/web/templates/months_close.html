@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Confirmation page for closing a month (fallback without JS and target of failed POSTs). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/months.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="months-detail stack">
+  <p class="text-small"><a href="/monate/{{ ym }}">{{ icon("chevron-left", 16) }} Zurück zu {{ ov.label }}</a></p>
+
+  {% if items %}
+  <section class="card" aria-labelledby="open-title">
+    <h2 class="card-title" id="open-title">Offene Punkte</h2>
+    <ul class="list months-items">
+      {% for row in items %}{% include "partials/months_open_item.html" %}{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    {% if ov.can_force %}
+    {% include "partials/months_close_form.html" %}
+    {% else %}
+    <p>Dieser Monat kann noch nicht abgeschlossen werden (der Monat läuft noch oder ein Timer ist aktiv).</p>
+    <a class="btn btn-secondary mt-3" href="/monate/{{ ym }}">Zurück</a>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

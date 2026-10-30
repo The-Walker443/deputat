@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Import step 2: assign the file columns to the fields (Konzept §12). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/import.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="import stack">
+  {% include "partials/import_steps.html" %}
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+  {% endif %}
+
+  <form method="post" action="/import/{{ batch.id }}/pruefen" class="stack" data-import-mapping data-busy-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="aus_zuordnung" value="1">
+    {% for s in sheets %}<input type="hidden" name="blatt" value="{{ s }}">{% endfor %}
+    <input type="hidden" name="kopfzeile" value="{{ header_row if header_row is not none else '' }}">
+
+    <section class="card stack">
+      <h2 class="card-title">Spalten zuordnen</h2>
+      <p class="text-small text-muted">{{ preview.filename }}{% if sheets %} · {{ sheets|join(", ") }}{% endif %} ·
+        Vorschläge anhand der Spaltenüberschriften. <strong>Datum</strong> ist Pflicht, außerdem
+        <strong>Von + Bis</strong> oder <strong>Dauer</strong>.</p>
+
+      <div class="import-map-grid">
+        {% for f in fields %}
+        <div class="field import-map-field" data-map-field="{{ f.key }}">
+          <label for="map-{{ f.key }}">{{ f.label }}{% if f.key == "datum" %} <span class="import-req">Pflicht</span>{% elif f.key in ("von", "bis", "dauer") %} <span class="import-req import-req-soft">Zeit</span>{% endif %}</label>
+          <select id="map-{{ f.key }}" name="map_{{ f.key }}"{% if f.key == "datum" %} required{% endif %}>
+            <option value="">– nicht zugeordnet –</option>
+            {% for c in columns %}
+            <option value="{{ c.value }}"{% if mapping[f.key] == c.value %} selected{% endif %}>{{ c.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="field-hint" data-map-hint>Dezimalstunden („2,5“) und „h:mm“ werden erkannt. Zeilen nur mit Dauer werden
+        ohne Uhrzeiten übernommen (Kennzeichen „ohne Zeitgrenzen“).</p>
+    </section>
+
+    <section class="card stack">
+      <h2 class="card-title">Kategorie</h2>
+      <p class="text-small text-muted">Freitexte aus der Kategorie-Spalte ordnest du im nächsten Schritt den Katalog-Codes zu
+        (mit Merkfunktion). Zeilen ohne Kategorie-Text bekommen die Standard-Kategorie.</p>
+      <div class="field">
+        <label for="standard-kategorie">Standard-Kategorie</label>
+        <select id="standard-kategorie" name="standard_kategorie">
+          <option value="">– keine (Kategorie-Spalte ist Pflicht) –</option>
+          {% for c in catalogue %}{% if c.active %}
+          <option value="{{ c.code }}"{% if default_category == c.code %} selected{% endif %}>{{ c.label }}</option>
+          {% endif %}{% endfor %}
+        </select>
+      </div>
+    </section>
+
+    <section aria-labelledby="mini-preview-title">
+      <h2 class="section-title" id="mini-preview-title">Erste Zeilen</h2>
+      <div class="table-wrap import-preview-wrap">
+        <table class="table table-compact import-preview">
+          <thead><tr>{% for c in preview.columns %}<th scope="col"><span class="import-col-letter">{{ c.letter }}</span> {{ c.header }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for r in preview.rows[:5] %}
+            <tr>{% for cell in r.cells %}<td>{{ cell }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">Weiter: Prüfen {{ icon("chevron-right", 18) }}</button>
+      <a class="btn btn-ghost" href="/import/{{ batch.id }}?{{ back_query }}">{{ icon("chevron-left", 18) }} Zurück</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

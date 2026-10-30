@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# To-do list of school days (Konzept §7.2): timetable not confirmed or no entry. Each links to /tag/{date}. #}
+{% block content %}
+<div class="stack">
+  {% if message %}
+  <div class="banner banner-info">{{ icon("info", 18) }}<span class="banner-body">{{ message }} <a href="/kalender/einrichtung">Kalender einrichten</a></span></div>
+  {% elif not days %}
+  <section class="card">
+    <p>{{ icon("check", 18) }} Alles erledigt – kein offener Schultag{% if result %} im {{ result.period.label }}{% endif %}.</p>
+  </section>
+  {% else %}
+  <section class="card card-flush" aria-labelledby="open-days-title">
+    <div class="card-header">
+      <h2 class="card-title" id="open-days-title">Offene Schultage</h2>
+      <span class="badge badge-warn">{{ days|length }}</span>
+    </div>
+    <p class="text-small text-muted mb-3">Tag antippen, um den Stundenplan zu bestätigen oder Ausfall, Vertretung und
+      geänderte Zeiten einzutragen. Ohne Bestätigung zählen die Stunden nicht.</p>
+    {% if not erfassung_ab and days|length > 10 %}
+    <p class="text-small mb-3">Erst später mit der Erfassung begonnen? Unter
+      <a href="/einstellungen#konto">Einstellungen → Erfassung ab</a> zählen frühere Tage neutral und verschwinden hier.</p>
+    {% endif %}
+    <ul class="list days-open-list">
+      {% for d in days %}
+      <li class="list-item">
+        <a class="list-item-main" href="/tag/{{ d.date.isoformat() }}?next=/tage">
+          <span class="list-item-title">{{ d.date|weekday_de(True) }}, {{ d.date|date_de }}</span>
+          <span class="list-item-meta">{{ d.gruende|join(" · ") }}{% if d.vorschlaege %} · {{ d.vorschlaege }} Vorschläge{% endif %}</span>
+        </a>
+        <span class="list-item-end">{{ icon("chevron-right", 18) }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

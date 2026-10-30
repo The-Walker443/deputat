@@ -1,0 +1,31 @@
+# Benchmarks (Konzept §9.4): reference values from published working-time studies.
+#
+# Shown as lines/tooltips, always labelled "Studienwert, nicht Norm". Edit freely; every entry needs
+# `label`, `hours_per_week` (number or "h:mm"), `source` and `year` (Pflichtfelder).
+# Optional: `kind` (studie | verbandsschaetzung | sonstiges, default studie), `note`.
+# A custom file is used instead when the environment variable BENCHMARKS_FILE points to it, or when
+# <DATA_DIR>/benchmarks.yaml exists (e.g. /data/benchmarks.yaml in the container volume).
+#
+# Values: please verify against the original publications before relying on them.
+
+benchmarks:
+  - label: "Grundschule Niedersachsen"
+    hours_per_week: "47:58"
+    source: "Kooperationsstelle Universität Göttingen (Arbeitszeitstudie Niedersachsen)"
+    year: "2015/16"
+    kind: studie
+    note: "Durchschnittswoche Grundschul-Lehrkräfte (Vollzeit)."
+
+  - label: "Grundschule Berlin"
+    hours_per_week: "49:45"
+    source: "Kooperationsstelle Universität Göttingen (Arbeitszeitstudie Berlin)"
+    year: "2023/24"
+    kind: studie
+    note: "Durchschnittswoche Grundschul-Lehrkräfte (Vollzeit)."
+
+  - label: "Hochrechnung Bayern (BLLV)"
+    hours_per_week: 52.5
+    source: "BLLV (Bayerischer Lehrer- und Lehrerinnenverband)"
+    year: "ohne Angabe – bitte prüfen"
+    kind: verbandsschaetzung
+    note: "Verbandsschätzung (Hochrechnung), keine eigene Messung. Quelle und Jahr vor Verwendung prüfen."

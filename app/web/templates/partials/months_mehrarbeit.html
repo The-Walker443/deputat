@@ -1,0 +1,66 @@
+{% from "partials/icons.html" import icon %}
+{# Mehrarbeit im engen Sinn (Konzept §6.6, Art. 87 BayBG). Swapped by HTMX after saving (outerHTML). #}
+<section class="card months-ma" id="mehrarbeit" aria-labelledby="ma-title">
+  <div class="card-header">
+    <h2 class="card-title" id="ma-title">Mehrarbeit (Art. 87 BayBG)</h2>
+    <span class="badge {% if ma.status == 'ausgeglichen' %}badge-success{% elif ma.status == 'beantragt' %}badge-primary{% elif ma.ustd_ausgleichsfaehig %}badge-warn{% else %}badge-outline{% endif %}">{{ ma.status_label }}</span>
+  </div>
+
+  {% if ma_message %}
+  <div class="banner banner-success flash" data-flash role="status">
+    <span class="banner-body">{{ ma_message }}</span>
+    <button type="button" class="banner-close" data-flash-close aria-label="Hinweis schließen">{{ icon("x", 16) }}</button>
+  </div>
+  {% endif %}
+  {% if ma_error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ ma_error }}</span></div>
+  {% endif %}
+
+  <div class="months-ma-grid">
+    <div class="months-ma-fig"><span class="kpi-label">angeordnet</span><span class="months-ma-val">{{ ustd(ma.ustd_angeordnet) }}</span></div>
+    <div class="months-ma-fig"><span class="kpi-label">genehmigt</span><span class="months-ma-val">{{ ustd(ma.ustd_genehmigt) }}</span></div>
+    <div class="months-ma-fig"><span class="kpi-label">gesamt</span><span class="months-ma-val">{{ ustd(ma.ustd_total) }}</span></div>
+    <div class="months-ma-fig{% if ma.ustd_ausgleichsfaehig %} is-due{% endif %}"><span class="kpi-label">ausgleichsfähig</span><span class="months-ma-val">{{ ustd(ma.ustd_ausgleichsfaehig) }}</span></div>
+  </div>
+  <p class="field-hint">Unterrichtsstunden (UStd, 45 min) aus Vertretungen mit Kennzeichen „angeordnet“ oder „genehmigt“.
+    Bagatellgrenze: Erst <strong>mehr als 3 UStd im Monat</strong> sind ausgleichsfähig.</p>
+
+  {% if ma.hinweis %}
+  <div class="banner {% if ma.frist_abgelaufen and ma.status == 'offen' %}banner-danger{% elif ma.ustd_ausgleichsfaehig and ma.status == 'offen' %}banner-warn{% else %}banner-info{% endif %} mt-3" role="note">
+    {{ icon("clock" if ma.frist else "info", 18) }}
+    <span class="banner-body">{{ ma.hinweis }}
+      {% if ma.ustd_ausgleichsfaehig and ma.status == 'offen' %}<a href="/schreiben">Antrag vorbereiten</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/monate/{{ ym }}/mehrarbeit" class="stack-sm mt-3"
+        hx-post="/monate/{{ ym }}/mehrarbeit" hx-target="#mehrarbeit" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="ma-status">Status</label>
+        <select id="ma-status" name="status">
+          {% for value, label in ma_status %}
+          <option value="{{ value }}"{% if ma.status == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="ma-erhalten">Vertretung erhalten (UStd)</label>
+        <input id="ma-erhalten" name="erhalten" inputmode="decimal" autocomplete="off"
+               value="{{ ustd(ma.ustd_vertretung_erhalten) if ma.ustd_vertretung_erhalten else '' }}" placeholder="0">
+      </div>
+    </div>
+    <p class="field-hint">„Vertretung erhalten“ (optional): eigener Unterricht, der ausfiel und nicht nachgearbeitet wurde.
+      Wird festgehalten, damit er beim Antrag gegengerechnet werden kann; die Zahlen oben ändern sich dadurch nicht.</p>
+    <div class="field">
+      <label for="ma-notiz">Notiz</label>
+      <textarea id="ma-notiz" name="notiz" rows="2" maxlength="2000"
+                placeholder="z. B. Antrag am … an die Schulleitung">{{ ma.note or "" }}</textarea>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-secondary">Speichern</button>
+    </div>
+  </form>
+</section>

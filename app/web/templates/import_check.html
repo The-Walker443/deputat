@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Import step 3: check rows, map category texts, monthly sums file vs. import (Konzept §12). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/months.css') }}">
+  <script src="{{ static_url('js/import.js') }}" defer></script>
+{% endblock %}
+
+{% macro row_head(r) %}
+  <td class="num text-faint">{{ r.ref }}</td>
+  <td><span class="badge {{ row_status.get(r.status, ('', 'badge-outline'))[1] }}">{{ row_status.get(r.status, (r.status, ''))[0] }}</span>
+    {% if r.excluded %}<span class="badge badge-outline">ausgeschlossen</span>{% endif %}</td>
+{% endmacro %}
+{% macro row_data(r) %}
+  <td class="nowrap">{{ r.day|date_de if r.day else "–" }}</td>
+  <td class="nowrap">{% if r.has_bounds %}{{ r.von }}–{{ r.bis }}{% endif %}{% if r.duration_hm %} <span class="text-muted">({{ r.duration_hm }})</span>{% endif %}</td>
+  <td>{% if r.category_code %}<strong>{{ r.category_code }}</strong>{% endif %}{% if r.category_text and r.category_text != r.category_code %} <span class="text-muted">„{{ r.category_text }}“</span>{% endif %}</td>
+{% endmacro %}
+
+{% block content %}
+<div class="import stack">
+  {% include "partials/import_steps.html" %}
+
+  {% if error %}
+  <div class="banner banner-danger" role="alert">{{ icon("alert", 18) }}<span class="banner-body">{{ error }}</span></div>
+  {% endif %}
+
+  {% if not report %}
+  <div class="btn-group">
+    <a class="btn btn-secondary" href="/import/{{ batch.id }}/zuordnung?{{ back_query }}">{{ icon("chevron-left", 18) }} Zurück zur Zuordnung</a>
+  </div>
+  {% else %}
+  {% set s = report.summary %}
+  <section aria-labelledby="sum-title">
+    <h2 class="section-title" id="sum-title">Ergebnis der Prüfung</h2>
+    <div class="kpi-grid">
+      <div class="kpi"><span class="kpi-label">Zeilen</span><span class="kpi-value">{{ s.rows_total }}</span>
+        <span class="kpi-sub">{{ s.ok }} ok</span></div>
+      <div class="kpi{% if s.importieren %} is-positive{% endif %}"><span class="kpi-label">Werden importiert</span><span class="kpi-value">{{ s.importieren }}</span>
+        <span class="kpi-sub">{{ s.import_hm }} h</span></div>
+      <div class="kpi{% if s.fehler %} is-negative{% endif %}"><span class="kpi-label">Fehler</span><span class="kpi-value">{{ s.fehler }}</span>
+        <span class="kpi-sub">werden übersprungen</span></div>
+      <div class="kpi"><span class="kpi-label">Duplikate</span><span class="kpi-value">{{ s.duplikat }}</span>
+        <span class="kpi-sub">{{ "übersprungen" if opts.skip_duplicates else "werden importiert" }}</span></div>
+    </div>
+  </section>
+
+  {% if report.hinweise %}
+  <div class="banner banner-warn" role="note">
+    {{ icon("alert", 18) }}
+    <ul class="banner-body import-hints">{% for h in report.hinweise %}<li>{{ h }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/import/{{ batch.id }}/pruefen" class="stack" data-busy-form>
+    {# Default button: Enter in a text field (e.g. Begründung) re-checks instead of committing the import. #}
+    <button type="submit" class="visually-hidden" tabindex="-1" aria-hidden="true">Neu prüfen</button>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="optionen" value="1">
+    {% for sh in sheets %}<input type="hidden" name="blatt" value="{{ sh }}">{% endfor %}
+    <input type="hidden" name="kopfzeile" value="{{ header_row if header_row is not none else '' }}">
+    {% for f, v in mapping.items() %}<input type="hidden" name="map_{{ f }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="standard_kategorie" value="{{ opts.default_category or '' }}">
+
+    {% if categories %}
+    <section class="card stack" aria-labelledby="cat-title">
+      <h2 class="card-title" id="cat-title">Kategorien zuordnen</h2>
+      <p class="text-small text-muted">Jeder Text aus der Datei bekommt einen Katalog-Code. Rot markierte Texte sind noch
+        nicht zugeordnet – diese Zeilen werden sonst übersprungen.</p>
+      <div class="table-wrap">
+        <table class="table table-compact import-cat-table">
+          <thead><tr><th scope="col">Text in der Datei</th><th scope="col" class="num">Zeilen</th><th scope="col">Kategorie</th></tr></thead>
+          <tbody>
+            {% for c in categories %}
+            <tr class="{% if not c.code %}is-unmapped{% endif %}">
+              <td>„{{ c.text }}“
+                {% if c.source %}<span class="badge badge-outline">{{ category_sources.get(c.source, c.source) }}</span>{% endif %}</td>
+              <td class="num">{{ c.count }}</td>
+              <td>
+                <input type="hidden" name="kat_text" value="{{ c.text }}">
+                <input type="hidden" name="kat_orig" value="{{ c.code }}">
+                <label class="visually-hidden" for="kat-{{ loop.index }}">Kategorie für „{{ c.text }}“</label>
+                <select id="kat-{{ loop.index }}" name="kat_code" class="import-cat-select"{% if not c.code %} aria-invalid="true"{% endif %}>
+                  <option value="">– zuordnen –</option>
+                  {% for k in catalogue %}{% if k.active %}
+                  <option value="{{ k.code }}"{% if c.code == k.code %} selected{% endif %}>{{ k.label }}</option>
+                  {% endif %}{% endfor %}
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label class="check"><input type="checkbox" name="merken" value="1"{% if opts.remember_mappings %} checked{% endif %}>
+        <span>Zuordnungen für künftige Importe merken</span></label>
+    </section>
+    {% else %}
+    <input type="hidden" name="merken" value="{{ '1' if opts.remember_mappings else '' }}">
+    {% endif %}
+
+    <section class="card stack" aria-labelledby="opt-title">
+      <h2 class="card-title" id="opt-title">Optionen</h2>
+      <label class="check"><input type="checkbox" name="duplikate_ueberspringen" value="1"{% if opts.skip_duplicates %} checked{% endif %}>
+        <span>Mögliche Duplikate überspringen (gleicher Tag, gleiche Dauer, gleiche Kategorie)</span></label>
+      {% if report.summary.ausserhalb or opts.include_outside_periods %}
+      <label class="check"><input type="checkbox" name="ausserhalb_importieren" value="1"{% if opts.include_outside_periods %} checked{% endif %}>
+        <span>Auch Zeilen außerhalb jedes Schuljahres importieren ({{ report.summary.ausserhalb }})</span></label>
+      {% endif %}
+      {% if report.closed_months or opts.reason %}
+      <div class="field">
+        <label for="import-reason">Begründung für abgeschlossene Monate</label>
+        <input type="text" id="import-reason" name="begruendung" maxlength="500" value="{{ opts.reason or '' }}"
+               placeholder="z. B. Nachtrag aus Papier-Aufzeichnung">
+        <span class="field-hint">Zeilen in abgeschlossenen Monaten werden nur mit Begründung übernommen; der Monat gilt dann als
+          „nachträglich korrigiert“.</span>
+      </div>
+      {% endif %}
+    </section>
+
+    {% if report.months %}
+    <section aria-labelledby="months-sum-title">
+      <h2 class="section-title" id="months-sum-title">Summen je Monat</h2>
+      <div class="table-wrap">
+        <table class="table table-compact">
+          <thead><tr>
+            <th scope="col">Monat</th><th scope="col" class="num">Zeilen</th>
+            <th scope="col" class="num">Datei</th><th scope="col" class="num">Import</th>
+            <th scope="col" class="num">Differenz</th><th scope="col" class="num">bereits erfasst</th>
+          </tr></thead>
+          <tbody>
+            {% for m in report.months %}
+            <tr>
+              <td class="nowrap">{{ m.label }}</td>
+              <td class="num">{{ m.rows_import }}/{{ m.rows }}</td>
+              <td class="num">{{ m.datei_hm }}</td>
+              <td class="num">{{ m.import_hm }}</td>
+              <td class="num{% if m.differenz_seconds %} is-negative{% endif %}">{{ m.differenz_hm if m.differenz_seconds else "0:00" }}</td>
+              <td class="num{% if m.bestehend_seconds %} text-warn{% endif %}">{{ m.bestehend_hm }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="field-hint mt-2">Datei = Summe aller lesbaren Zeilen, Import = was übernommen wird. Eine Differenz entsteht durch
+        übersprungene Fehler-, Duplikat- oder ausgeschlossene Zeilen. „bereits erfasst“ = vorhandene Einträge im Monat.</p>
+    </section>
+    {% endif %}
+
+    {% if problems %}
+    <section aria-labelledby="problems-title">
+      <h2 class="section-title" id="problems-title">Zeilen mit Fehlern, Duplikaten oder Hinweisen ({{ problems_total }})</h2>
+      <div class="table-wrap import-rows-wrap">
+        <table class="table table-compact import-rows">
+          <thead><tr>
+            <th scope="col" class="num">Zeile</th><th scope="col">Status</th><th scope="col">Meldung</th>
+            <th scope="col">Datum</th><th scope="col">Zeit</th><th scope="col">Kategorie</th>
+          </tr></thead>
+          <tbody>
+            {% for r in problems %}
+            <tr class="import-row is-{{ r.status }}">
+              {{ row_head(r) }}
+              <td class="import-msg">
+                {% for e in r.errors %}<span class="import-msg-error">{{ e }}</span>{% endfor %}
+                {% for w in r.warnings %}<span class="import-msg-warn">{{ w }}</span>{% endfor %}
+                {% if (r.status == "duplikat" and opts.skip_duplicates)
+                      or (r.outside_period and r.status == "ok" and not opts.include_outside_periods) %}
+                <label class="check import-row-check"><input type="checkbox" name="einschliessen" value="{{ r.ref }}"{% if r.ref in opts.include_rows %} checked{% endif %}>
+                  <span>trotzdem importieren</span></label>
+                {% endif %}
+              </td>
+              {{ row_data(r) }}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if problems_total > problems|length %}<p class="field-hint mt-2">Die ersten {{ problems|length }} von {{ problems_total }} Zeilen werden angezeigt.</p>{% endif %}
+    </section>
+    {% endif %}
+
+    <details class="card import-all-rows">
+      <summary>Alle Zeilen ansehen{% if rows_total > all_rows|length %} (erste {{ all_rows|length }} von {{ rows_total }}){% endif %} · einzelne Zeilen ausschließen</summary>
+      <div class="table-wrap import-rows-wrap mt-3">
+        <table class="table table-compact import-rows">
+          <thead><tr>
+            <th scope="col" class="num">Zeile</th><th scope="col">Status</th><th scope="col">Datum</th>
+            <th scope="col">Zeit</th><th scope="col">Kategorie</th><th scope="col">Klasse/Fach</th><th scope="col">Ausschließen</th>
+          </tr></thead>
+          <tbody>
+            {% for r in all_rows %}
+            <tr class="import-row is-{{ r.status }}{% if r.excluded %} is-excluded{% endif %}">
+              {{ row_head(r) }}
+              {{ row_data(r) }}
+              <td>{{ [r.klasse, r.fach]|select|join(" · ") }}</td>
+              <td>{% if r.status in ("ok", "duplikat") %}
+                <label class="check"><input type="checkbox" name="ausschliessen" value="{{ r.ref }}"{% if r.excluded %} checked{% endif %}>
+                  <span class="visually-hidden">Zeile {{ r.ref }} ausschließen</span></label>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <div class="import-actions">
+      <button type="submit" class="btn btn-primary btn-lg" formaction="/import/{{ batch.id }}/uebernehmen"
+              {% if not report.can_commit %}disabled{% endif %} data-commit>
+        {{ icon("check", 20) }} {{ s.importieren }} Zeile{{ "" if s.importieren == 1 else "n" }} übernehmen</button>
+      <button type="submit" class="btn btn-secondary">Neu prüfen</button>
+      <a class="btn btn-ghost" href="/import/{{ batch.id }}/zuordnung?{{ back_query }}">{{ icon("chevron-left", 18) }} Spalten ändern</a>
+    </div>
+    <p class="field-hint">Nach Änderungen an Kategorien oder Optionen „Neu prüfen“ – „Übernehmen“ prüft ebenfalls noch einmal
+      und importiert dann alles oder nichts.</p>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

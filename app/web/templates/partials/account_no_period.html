@@ -1,0 +1,9 @@
+{% from "partials/icons.html" import icon %}
+{# Shared empty state for Konto / Woche / Jahr when no period exists. #}
+<section class="card empty-state acct-empty" data-no-period>
+  <span class="menu-icon">{{ icon("calendar", 28) }}</span>
+  <h2 class="h2">Noch kein Schuljahr angelegt</h2>
+  <p>Ohne Schuljahr gibt es kein Soll, keinen Saldo und keine Ferien. Lege im Kalender das Schuljahr an und
+    importiere die Ferien.</p>
+  <a class="btn btn-primary" href="/kalender">{{ icon("calendar", 18) }}<span>Zum Kalender</span></a>
+</section>

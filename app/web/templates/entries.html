@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block head_scripts %}<script src="{{ static_url('js/entries.js') }}" defer></script>{% endblock %}
+{% block topbar_actions %}
+<a class="btn btn-primary btn-sm" href="/eintraege/neu?{{ {'next': '/eintraege?' ~ filters.query()}|urlencode }}">
+  {{ icon("plus", 18) }}<span>Neu</span>
+</a>
+{% endblock %}
+{% block content %}
+{% include "partials/entries_results.html" %}
+{% endblock %}

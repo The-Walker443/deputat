@@ -1,0 +1,272 @@
+/* Deputat – Kalender, Einstellungen, Stundenplan, Mehr (app/web/{calendar,settings,timetable}.py).
+ * Builds on the tokens and components of app.css; only adds what these screens need.
+ * Colors are custom properties so light and dark mode stay in sync. */
+
+:root {
+  /* day types */
+  --cal-schultag-bg: var(--surface);
+  --cal-ferientag-bg: #def3e6;
+  --cal-ferientag-fg: #13633f;
+  --cal-unterrichtsfrei-bg: #fdf0d5;
+  --cal-unterrichtsfrei-fg: #8a5300;
+  --cal-feiertag-bg: #fbe1df;
+  --cal-feiertag-fg: #a92b26;
+  --cal-wochenende-bg: var(--surface-2);
+  --cal-wochenende-fg: var(--text-faint);
+  /* absences */
+  --abs-urlaub: #1f7ae0;
+  --abs-krank: #d1435b;
+  --abs-fortbildung: #7c4dce;
+  --abs-sonst: #5b6573;
+  --cal-note: #c27c00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cal-ferientag-bg: #173325;
+    --cal-ferientag-fg: #7fd8a8;
+    --cal-unterrichtsfrei-bg: #3a2c12;
+    --cal-unterrichtsfrei-fg: #f2c46d;
+    --cal-feiertag-bg: #3d1f1e;
+    --cal-feiertag-fg: #ff9a92;
+    --cal-wochenende-bg: #1f232a;
+    --abs-urlaub: #5ea8ff;
+    --abs-krank: #ff7f93;
+    --abs-fortbildung: #b39bff;
+    --abs-sonst: #a3acb8;
+    --cal-note: #f0b44c;
+    --cal-mark-fg: #0d1117;
+  }
+}
+
+/* ------------------------------------------------------------------ generic admin building blocks */
+
+.admin { min-width: 0; }
+.admin [id] { scroll-margin-top: calc(var(--topbar-h) + var(--space-3)); }
+.admin .card + .card { margin-top: 0; }
+.admin-inline-form { display: flex; align-items: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.admin-inline-form select { min-width: 8rem; }
+
+.admin-details > summary {
+  display: flex; align-items: center; gap: var(--space-2);
+  min-height: 44px; cursor: pointer; list-style: none;
+  font-weight: 600; color: var(--text);
+}
+.admin-details > summary::-webkit-details-marker { display: none; }
+.admin-details > summary::before {
+  content: ""; width: 8px; height: 8px; flex: none;
+  border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+  transform: rotate(-45deg); transition: transform var(--transition);
+}
+.admin-details[open] > summary::before { transform: rotate(45deg); }
+
+.admin-row-current td { background: var(--primary-soft); }
+
+.admin-section-title {
+  font-size: var(--fs-sm); font-weight: 650; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin: var(--space-3) 0 0;
+}
+.admin-help { font-size: var(--fs-sm); color: var(--text-muted); }
+.admin-help + .admin-help { margin-top: var(--space-2); }
+
+.admin-toc { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: var(--space-1);
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.admin-toc a {
+  flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface);
+  color: var(--text); text-decoration: none; font-size: var(--fs-sm);
+}
+.admin-toc a:hover { background: var(--surface-2); }
+
+.admin-check-row { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 44px; padding: var(--space-2) 0; }
+.admin-check-row input[type="checkbox"] { margin-top: 2px; }
+.admin-check-row .admin-check-text { display: flex; flex-direction: column; gap: 2px; }
+.admin-check-row .admin-check-label { font-weight: 600; }
+
+.field input[type="number"] { font-variant-numeric: tabular-nums; }
+.admin-computed { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2);
+  font-size: var(--fs-sm); }
+
+.admin-code { font-family: var(--font-mono); font-size: var(--fs-sm); padding: 1px 6px;
+  border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-muted); }
+
+/* ------------------------------------------------------------------ wizard */
+
+.wizard-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2);
+  list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.wizard-steps li { min-width: 0; }
+.wizard-step {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  min-height: 56px; padding: var(--space-2) 2px; border-radius: var(--radius-sm);
+  color: var(--text-muted); text-decoration: none; font-size: var(--fs-xs); font-weight: 600;
+}
+.wizard-step .wizard-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface); color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+a.wizard-step:hover { background: var(--surface-2); color: var(--text); }
+.wizard-step.is-current { color: var(--primary); }
+.wizard-step.is-current .wizard-no { border-color: var(--primary); background: var(--primary); color: var(--primary-contrast); }
+.wizard-step.is-done .wizard-no { border-color: var(--success); color: var(--success); }
+.wizard-step span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wizard-nav { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------ month calendar */
+
+.cal-card { padding: var(--space-3); }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.cal-month-title { font-size: var(--fs-lg); font-weight: 650; text-align: center; flex: 1; }
+.cal-grid { display: flex; flex-direction: column; gap: 4px; }
+.cal-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-wd { text-align: center; font-size: var(--fs-xs); font-weight: 650; color: var(--text-muted); padding: 2px 0; }
+
+.cal-day {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  min-height: 48px; padding: 4px 2px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--cal-schultag-bg); color: var(--text);
+  text-decoration: none; font-variant-numeric: tabular-nums; overflow: hidden;
+}
+a.cal-day:hover { border-color: var(--border-strong); color: var(--text); }
+.cal-num { font-size: var(--fs-sm); font-weight: 600; line-height: 1.2; }
+.cal-mark {
+  margin-top: 3px; min-width: 18px; padding: 0 4px; border-radius: var(--radius-pill);
+  font-size: 0.6875rem; font-weight: 700; line-height: 16px; text-align: center;
+  background: var(--abs-sonst); color: var(--cal-mark-fg, #fff);
+}
+.cal-mark-holiday { background: transparent; color: var(--cal-feiertag-fg); font-size: var(--fs-md); line-height: 12px; }
+.cal-note-dot { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--cal-note); }
+
+.cal-ferientag { background: var(--cal-ferientag-bg); border-color: transparent; color: var(--cal-ferientag-fg); }
+.cal-unterrichtsfrei { background: var(--cal-unterrichtsfrei-bg); border-color: transparent; color: var(--cal-unterrichtsfrei-fg); }
+.cal-feiertag { background: var(--cal-feiertag-bg); border-color: transparent; color: var(--cal-feiertag-fg); }
+.cal-wochenende { background: var(--cal-wochenende-bg); border-color: transparent; color: var(--cal-wochenende-fg); }
+.cal-none { background: transparent; border-style: dashed; color: var(--text-faint); }
+
+.cal-day.has-absence { box-shadow: inset 0 -3px 0 var(--abs-c, var(--abs-sonst)); }
+.abs-urlaub { --abs-c: var(--abs-urlaub); }
+.abs-krank { --abs-c: var(--abs-krank); }
+.abs-fortbildung { --abs-c: var(--abs-fortbildung); }
+.abs-dienstbefreiung, .abs-sonderurlaub, .abs-elternzeit { --abs-c: var(--abs-sonst); }
+.cal-day.has-absence .cal-mark { background: var(--abs-c, var(--abs-sonst)); }
+
+.cal-day.is-outside { opacity: 0.45; }
+.cal-day.is-disabled { opacity: 0.35; }
+.cal-day.is-today { border: 2px solid var(--primary); }
+.cal-day.is-selected { outline: 3px solid var(--primary); outline-offset: 1px; }
+
+.cal-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); list-style: none; margin: var(--space-3) 0 var(--space-2); padding: 0;
+  font-size: var(--fs-xs); color: var(--text-muted); }
+.cal-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.cal-swatch { display: inline-block; width: 14px; height: 14px; flex: none; border-radius: 4px; border: 1px solid var(--border); }
+.cal-swatch.cal-schultag { background: var(--cal-schultag-bg); }
+.cal-swatch.cal-ferientag { background: var(--cal-ferientag-bg); }
+.cal-swatch.cal-unterrichtsfrei { background: var(--cal-unterrichtsfrei-bg); }
+.cal-swatch.cal-feiertag { background: var(--cal-feiertag-bg); }
+.cal-swatch.cal-wochenende { background: var(--cal-wochenende-bg); }
+.cal-swatch.has-absence { background: var(--abs-c); border-color: transparent; box-shadow: none; }
+
+.cal-events .list-item { gap: var(--space-2); align-items: center; }
+.cal-ev-ferien { background: var(--cal-ferientag-bg); }
+.cal-ev-feiertag, .cal-ev-wochenende { background: var(--cal-feiertag-bg); }
+.cal-ev-unterrichtsfrei { background: var(--cal-unterrichtsfrei-bg); }
+.cal-ev-absence { background: var(--abs-sonst); border-color: transparent; }
+.cal-ev-urlaub { background: var(--abs-urlaub); border-color: transparent; }
+.cal-ev-note { background: var(--cal-note); border-color: transparent; border-radius: 50%; }
+
+.cal-day-panel:empty { display: none; }
+.cal-day-editor { border-color: var(--primary); }
+.cal-badge.cal-schultag { background: var(--surface-2); color: var(--text); }
+
+.ferien-item { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
+.ferien-item:last-child { border-bottom: 0; }
+.ferien-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+
+.ics-row-ausserhalb, .ics-row-vorhanden, .ics-row-doppelt { color: var(--text-muted); }
+.ics-table td:first-child { width: 44px; }
+.ics-table input[type="checkbox"] { width: 22px; height: 22px; }
+
+/* ------------------------------------------------------------------ settings */
+
+.settings-list-editor { display: flex; flex-direction: column; gap: var(--space-2); }
+.zr-line1 { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: var(--space-2); }
+.zr-line2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; gap: var(--space-2); align-items: end; margin-top: var(--space-2); }
+.zr-item input { min-width: 0; }
+.zr-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.zr-item { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+
+.token-box {
+  display: block; width: 100%; padding: var(--space-3); border-radius: var(--radius-sm);
+  border: 1px dashed var(--primary); background: var(--primary-soft); color: var(--text);
+  font-family: var(--font-mono); font-size: var(--fs-sm); word-break: break-all; user-select: all;
+}
+.code-block {
+  margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2);
+  border: 1px solid var(--border); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5;
+  overflow-x: auto; white-space: pre; max-width: 100%;
+}
+
+/* categories */
+.cat-list { list-style: none; margin: 0; padding: 0; }
+.cat-item { border-bottom: 1px solid var(--border); }
+.cat-item:last-child { border-bottom: 0; }
+.cat-head { display: flex; align-items: center; gap: var(--space-2); min-height: 52px; padding: var(--space-2) var(--space-3); }
+.cat-dot { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--c, var(--text-faint)); }
+.cat-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-item.is-inactive .cat-name, .cat-sub.is-inactive .cat-name { color: var(--text-faint); text-decoration: line-through; }
+.cat-move { display: flex; gap: 2px; flex: none; }
+.cat-move form { display: contents; }
+.cat-body { padding: 0 var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.cat-subs { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cat-sub { border-bottom: 1px solid var(--border); }
+.cat-sub:last-child { border-bottom: 0; }
+.cat-sub > .admin-details > summary { padding: 0 var(--space-3); font-weight: 500; }
+.cat-sub .cat-edit { padding: 0 var(--space-3) var(--space-3); }
+input[type="color"] { width: 56px; min-height: 44px; padding: 2px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+
+/* ------------------------------------------------------------------ timetable grid */
+
+.tt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 calc(var(--space-3) * -1); padding: 0 var(--space-3); }
+.tt-grid { display: grid; grid-template-columns: 2.25rem repeat(5, minmax(2.75rem, 1fr)); gap: 4px; }
+.tt-head { text-align: center; font-size: var(--fs-xs); font-weight: 650; color: var(--text-muted); padding: 2px 0; }
+.tt-slotno { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tt-slotno strong { font-size: var(--fs-sm); color: var(--text); }
+.tt-cell {
+  --c: var(--border-strong);
+  display: flex; flex-direction: column; justify-content: center; gap: 1px; min-height: 52px; min-width: 0;
+  padding: 4px 4px 4px 7px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); text-decoration: none; font-size: var(--fs-xs); line-height: 1.2;
+  box-shadow: inset 4px 0 0 var(--c); overflow: hidden;
+}
+.tt-cell:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
+.tt-cell.is-empty { background: transparent; border-style: dashed; box-shadow: none; color: var(--text-faint); align-items: center; }
+.tt-cell.is-frei { background: var(--surface-2); box-shadow: none; color: var(--text-muted); }
+.tt-cell.is-selected { outline: 3px solid var(--primary); outline-offset: 1px; }
+.tt-cell-main { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-cell-sub { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-panel:empty { display: none; }
+.tt-version-list .list-item { align-items: center; }
+
+/* ------------------------------------------------------------------ mehr */
+
+.about-card dl { margin-top: var(--space-2); }
+
+@media (min-width: 600px) {
+  .cal-day { min-height: 60px; }
+  .cal-num { font-size: var(--fs-md); }
+  .tt-cell { min-height: 60px; font-size: var(--fs-sm); }
+}
+
+/* Touch targets: back links and small buttons on these screens stay >= 44px (mobile first). */
+.admin-back { display: inline-flex; align-items: center; min-height: 44px; }
+.admin .btn-sm { min-height: 44px; }
+.admin .btn-icon.btn-sm { width: 44px; }
+/* Narrow phones: numeric column headers may wrap so compact tables fit without side-scrolling. */
+.admin .table th.num { white-space: normal; }
+.admin input[type="file"] { min-height: 44px; padding: var(--space-2) 0; max-width: 100%; }
+/* Whole version row is the tap target (stretched link). */
+.tt-version-list .list-item { position: relative; min-height: 52px; }
+.tt-version-list .list-item-title::after { content: ""; position: absolute; inset: 0; }

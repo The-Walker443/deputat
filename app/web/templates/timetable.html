@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Screen "Stundenplan" (Konzept §7.2): versions, weekly grid Mo–Fr × Zeitraster, slot editor panel. #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+  <script src="{{ static_url('js/admin.js') }}" defer></script>
+  <script src="{{ static_url('js/timetable.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="stack admin" data-timetable>
+  {% if not has_raster %}
+  <div class="banner banner-warn">{{ icon("alert", 18) }}
+    <span class="banner-body">Es ist noch kein Zeitraster hinterlegt. <a href="/einstellungen#zeitraster">Zeitraster in den Einstellungen anlegen</a> –
+      dann übernimmt der Stundenplan die Uhrzeiten automatisch.</span>
+  </div>
+  {% endif %}
+
+  {% if not tt %}
+  {# ---------------------------------------------------------------- empty state #}
+  <section class="card stack-sm" id="versionen" aria-labelledby="tt-new-title">
+    <div class="empty-state">
+      <p class="h3">Noch kein Stundenplan</p>
+      <p class="text-small">Aus dem Stundenplan schlägt die App an jedem Schultag deine Stunden vor – ein Tipp auf
+        „Tag wie geplant“ genügt dann.</p>
+    </div>
+    <h2 class="card-title" id="tt-new-title">Stundenplan anlegen</h2>
+    <form method="post" action="/stundenplan/versionen" class="stack-sm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <div class="field">
+        <label for="n-label">Bezeichnung</label>
+        <input id="n-label" name="label" maxlength="100" placeholder="z. B. 1. Halbjahr 2026/27">
+      </div>
+      <div class="form-row">
+        <div class="field"><label for="n-from">Gültig ab</label><input id="n-from" type="date" name="valid_from" required value="{{ default_from.isoformat() }}"></div>
+        <div class="field"><label for="n-to">Gültig bis (optional)</label><input id="n-to" type="date" name="valid_to"></div>
+      </div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">{{ icon("plus", 18) }} Anlegen</button></div>
+    </form>
+  </section>
+  {% else %}
+
+  {# ---------------------------------------------------------------- version header #}
+  <section class="card" aria-labelledby="tt-title">
+    <div class="row-between">
+      <div class="grow">
+        <h2 class="card-title" id="tt-title">{{ tt.label }}</h2>
+        <p class="text-small text-muted">gültig {{ tt.valid_from|date_de }} – {{ tt.valid_to|date_de if tt.valid_to else "offen" }}</p>
+      </div>
+      {% if info.current %}<span class="badge badge-success">aktuell</span>{% elif info.future %}<span class="badge badge-primary">künftig</span>{% else %}<span class="badge badge-outline">abgelaufen</span>{% endif %}
+    </div>
+    {% if unterricht_ustd is not none %}
+    <p class="text-small mt-2">Unterricht im Plan: <strong class="num">{{ ("%g"|format(unterricht_ustd|round(1)))|replace(".", ",") }}</strong> UStd./Woche
+      {% if upz_ist %}<span class="text-muted">(UPZ tatsächlich {{ ("%g"|format(upz_ist))|replace(".", ",") }})</span>{% endif %}</p>
+    {% endif %}
+  </section>
+
+  {# ---------------------------------------------------------------- grid #}
+  <section class="card" id="raster" aria-labelledby="grid-title">
+    <h2 class="card-title" id="grid-title">Wochenraster</h2>
+    <div class="tt-scroll">
+      <div class="tt-grid" role="grid" aria-labelledby="grid-title">
+        <div class="tt-head" role="columnheader"><span class="visually-hidden">Stunde</span></div>
+        {% for no, short, long in weekdays %}<div class="tt-head" role="columnheader" title="{{ long }}">{{ short }}</div>{% endfor %}
+        {% for row in grid %}
+        <div class="tt-slotno" role="rowheader"><strong>{{ row.slot_no }}</strong>{% if row.start %}<span>{{ row.start }}</span>{% endif %}</div>
+        {% for cell in row.cells %}
+        {% set wd = loop.index %}
+        {% set href = "/stundenplan/" ~ tt.id ~ "/stunde?tag=" ~ wd ~ "&nr=" ~ row.slot_no %}
+        {% if cell %}
+        <a role="gridcell" class="tt-cell{% if cell.is_frei %} is-frei{% endif %}" href="{{ href }}" hx-get="{{ href }}" hx-target="#slot-panel"
+           hx-swap="innerHTML show:#slot-panel:top" data-select title="{{ cell.title }}" aria-label="{{ weekdays[wd - 1][2] }}: {{ cell.title }}"
+           {% if cell.color %}style="--c: {{ cell.color }}"{% endif %}>
+          <span class="tt-cell-main">{{ cell.main }}</span>
+          {% if cell.sub %}<span class="tt-cell-sub">{{ cell.sub }}</span>{% endif %}
+        </a>
+        {% else %}
+        <a role="gridcell" class="tt-cell is-empty" href="{{ href }}" hx-get="{{ href }}" hx-target="#slot-panel"
+           hx-swap="innerHTML show:#slot-panel:top" data-select aria-label="{{ weekdays[wd - 1][2] }}, Stunde {{ row.slot_no }}: leer – eintragen">+</a>
+        {% endif %}
+        {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+    <p class="text-xs text-muted mt-2">Feld antippen, um eine Stunde einzutragen oder zu ändern. Die Farbe zeigt die Kategorie.</p>
+    <details class="admin-details mt-2">
+      <summary>Weitere Zeile (z. B. 0 für Frühaufsicht)</summary>
+      <form method="get" action="/stundenplan/{{ tt.id }}/stunde" class="admin-inline-form mt-2">
+        <div class="field"><label for="x-tag">Tag</label>
+          <select id="x-tag" name="tag">{% for no, short, long in weekdays %}<option value="{{ no }}">{{ long }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="x-nr">Nr.</label><input id="x-nr" name="nr" type="number" min="0" max="99" value="0" inputmode="numeric" required></div>
+        <button type="submit" class="btn btn-secondary">Öffnen</button>
+      </form>
+    </details>
+  </section>
+
+  <div id="slot-panel" class="tt-panel" data-panel aria-live="polite"></div>
+
+  <section class="card stack-sm" aria-labelledby="raster-sync-title">
+    <h2 class="card-title" id="raster-sync-title">Zeiten</h2>
+    <p class="admin-help">Die Uhrzeiten kommen aus dem <a href="/einstellungen#zeitraster">Zeitraster</a>. Wurde das Zeitraster
+      geändert, kannst du die neuen Zeiten für diese Version übernehmen (abweichende Stunden außerhalb des Rasters bleiben).</p>
+    <form method="post" action="/stundenplan/versionen/{{ tt.id }}/zeitraster" data-confirm="Alle Zeiten dieser Version aus dem Zeitraster neu setzen?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <button type="submit" class="btn btn-secondary btn-sm">Zeiten aus Zeitraster übernehmen</button>
+    </form>
+  </section>
+
+  {# ---------------------------------------------------------------- versions #}
+  <section class="card" id="versionen" aria-labelledby="versions-title">
+    <h2 class="card-title" id="versions-title">Versionen</h2>
+    <ul class="list tt-version-list">
+      {% for v in versions %}
+      <li class="list-item">
+        <div class="list-item-main">
+          <a class="list-item-title" href="/stundenplan?version={{ v.tt.id }}"{% if v.tt.id == tt.id %} aria-current="true"{% endif %}>{{ v.tt.label }}</a>
+          <div class="list-item-meta num">{{ v.tt.valid_from|date_de }} – {{ v.tt.valid_to|date_de if v.tt.valid_to else "offen" }} · {{ v.slot_count }} {{ "Eintrag" if v.slot_count == 1 else "Einträge" }}</div>
+        </div>
+        <div class="list-item-end">
+          {% if v.current %}<span class="badge badge-success">aktuell</span>{% elif v.future %}<span class="badge badge-primary">künftig</span>{% endif %}
+          {% if v.tt.id == tt.id %}<span class="badge badge-outline">angezeigt</span>{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <details class="admin-details mt-3">
+      <summary>„{{ tt.label }}“ bearbeiten</summary>
+      <form method="post" action="/stundenplan/versionen/{{ tt.id }}" class="stack-sm mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <div class="field"><label for="e-label">Bezeichnung</label><input id="e-label" name="label" maxlength="100" value="{{ tt.label }}"></div>
+        <div class="form-row">
+          <div class="field"><label for="e-from">Gültig ab</label><input id="e-from" type="date" name="valid_from" required value="{{ tt.valid_from.isoformat() }}"></div>
+          <div class="field"><label for="e-to">Gültig bis</label><input id="e-to" type="date" name="valid_to" value="{{ tt.valid_to.isoformat() if tt.valid_to else '' }}"></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Speichern</button></div>
+      </form>
+      <form method="post" action="/stundenplan/versionen/{{ tt.id }}/loeschen" class="mt-3"
+            data-confirm="„{{ tt.label }}“ mit allen Stunden löschen? Bereits bestätigte Einträge bleiben erhalten.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn btn-ghost btn-sm text-danger">Version löschen</button>
+      </form>
+    </details>
+
+    <details class="admin-details">
+      <summary>Für das nächste Halbjahr kopieren</summary>
+      <form method="post" action="/stundenplan/versionen/{{ tt.id }}/kopieren" class="stack-sm mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <p class="admin-help">Übernimmt alle Stunden in eine neue Version, die du danach anpasst.</p>
+        <div class="field"><label for="c-label">Bezeichnung</label><input id="c-label" name="label" maxlength="100" placeholder="z. B. 2. Halbjahr"></div>
+        <div class="form-row">
+          <div class="field"><label for="c-from">Gültig ab</label><input id="c-from" type="date" name="valid_from" required value="{{ default_from.isoformat() }}"></div>
+          <div class="field"><label for="c-to">Gültig bis (optional)</label><input id="c-to" type="date" name="valid_to"></div>
+        </div>
+        <label class="check"><input type="checkbox" name="vorherige_beenden" value="1" checked> bisherige Version am Vortag beenden</label>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Kopieren</button></div>
+      </form>
+    </details>
+
+    <details class="admin-details">
+      <summary>Neue, leere Version</summary>
+      <form method="post" action="/stundenplan/versionen" class="stack-sm mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <div class="field"><label for="n2-label">Bezeichnung</label><input id="n2-label" name="label" maxlength="100"></div>
+        <div class="form-row">
+          <div class="field"><label for="n2-from">Gültig ab</label><input id="n2-from" type="date" name="valid_from" required value="{{ default_from.isoformat() }}"></div>
+          <div class="field"><label for="n2-to">Gültig bis (optional)</label><input id="n2-to" type="date" name="valid_to"></div>
+        </div>
+        <label class="check"><input type="checkbox" name="vorherige_beenden" value="1" checked> bisherige Version am Vortag beenden</label>
+        <div class="form-actions"><button type="submit" class="btn btn-secondary">Anlegen</button></div>
+      </form>
+    </details>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

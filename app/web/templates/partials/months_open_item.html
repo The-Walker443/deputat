@@ -1,0 +1,9 @@
+{% from "partials/icons.html" import icon %}
+<li class="list-item months-item{% if row.item.blocking %} is-blocking{% endif %}">
+  <span class="months-item-icon" aria-hidden="true">{{ icon("alert" if row.item.blocking else "clock", 18) }}</span>
+  <span class="list-item-main">
+    <span class="months-item-text">{{ row.item.message }}</span>
+    {% if row.item.blocking %}<span class="list-item-meta">verhindert den Abschluss</span>{% endif %}
+  </span>
+  {% if row.fix %}<a class="btn btn-secondary btn-sm" href="{{ row.fix.href }}">{{ row.fix.label }}</a>{% endif %}
+</li>

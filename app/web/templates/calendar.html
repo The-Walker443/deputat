@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% import "partials/calendar_macros.html" as cm %}
+{# Screen "Kalender" (Konzept §7.1, §6.2): month view, day editor (HTMX panel), leave plan, ferien. #}
+{% block head_scripts %}{{ cm.head_assets() }}{% endblock %}
+
+{% block content %}
+<div class="stack admin" id="calendar-root" data-calendar>
+
+  {# ---------------------------------------------------------------- period switcher #}
+  <div class="card admin-period">
+    <div class="row-between">
+      <div class="grow">
+        <p class="text-xs text-muted">Schuljahr</p>
+        <p class="text-strong">{{ period.label }} <span class="text-small text-muted">· {{ period.start|date_de }}–{{ period.end|date_de }}</span></p>
+      </div>
+      {% if periods|length > 1 %}
+      <form method="get" action="/kalender" class="admin-inline-form" data-autosubmit>
+        <label class="visually-hidden" for="period-switch">Schuljahr wechseln</label>
+        <select id="period-switch" name="periode">
+          {% for p in periods %}<option value="{{ p.id }}"{% if p.id == period.id %} selected{% endif %}>{{ p.label }}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-secondary btn-sm" type="submit">Wechseln</button></noscript>
+      </form>
+      {% endif %}
+    </div>
+    <details class="admin-details mt-3">
+      <summary>Schuljahr anlegen oder löschen</summary>
+      <div class="stack-sm mt-3">
+        <form method="post" action="/kalender/perioden" class="admin-inline-form">
+          {{ cm.csrf(request) }}
+          <div class="field grow">
+            <label for="new-period">Neues Schuljahr</label>
+            <input id="new-period" name="label" value="{{ next_period_label }}" required maxlength="32" placeholder="z. B. 2027/28">
+          </div>
+          <button type="submit" class="btn btn-secondary">{{ icon("plus", 18) }} Anlegen</button>
+        </form>
+        <p class="field-hint">Schuljahr wie „2026/27“ (Beginn {{ settings.periode_start_md[3:] }}.{{ settings.periode_start_md[:2] }}.) oder Kalenderjahr wie „2027“.</p>
+        <form method="post" action="/kalender/perioden/{{ period.id }}/loeschen"
+              data-confirm="„{{ period.label }}“ mit allen Ferien und Kalendereingaben löschen? Zeiteinträge bleiben erhalten.">
+          {{ cm.csrf(request) }}
+          <button type="submit" class="btn btn-ghost btn-sm text-danger">„{{ period.label }}“ löschen</button>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  {% if not ferien %}
+  <div class="banner banner-warn">{{ icon("alert", 18) }}
+    <span class="banner-body"><strong>Noch keine Ferien erfasst.</strong> Ohne Ferien stimmt das Konto nicht.
+      <a href="/kalender/einrichtung?periode={{ period.id }}&amp;schritt=2">Ferien importieren oder eintragen</a></span>
+  </div>
+  {% endif %}
+
+  {# ---------------------------------------------------------------- month grid #}
+  <section class="card cal-card" aria-labelledby="cal-month-title">
+    <div class="cal-nav">
+      {% if month.prev %}
+      <a class="btn btn-ghost btn-icon" href="/kalender?periode={{ period.id }}&amp;monat={{ month.prev }}" aria-label="Vorheriger Monat">{{ icon("chevron-left", 20) }}</a>
+      {% else %}<span class="btn btn-ghost btn-icon" aria-disabled="true">{{ icon("chevron-left", 20) }}</span>{% endif %}
+      <h2 class="cal-month-title" id="cal-month-title">{{ month.label }}</h2>
+      {% if month.next %}
+      <a class="btn btn-ghost btn-icon" href="/kalender?periode={{ period.id }}&amp;monat={{ month.next }}" aria-label="Nächster Monat">{{ icon("chevron-right", 20) }}</a>
+      {% else %}<span class="btn btn-ghost btn-icon" aria-disabled="true">{{ icon("chevron-right", 20) }}</span>{% endif %}
+    </div>
+
+    <div class="cal-grid" role="grid" aria-labelledby="cal-month-title">
+      <div class="cal-row cal-head" role="row">
+        {% for wd in weekday_headers %}<div class="cal-wd" role="columnheader">{{ wd }}</div>{% endfor %}
+      </div>
+      {% for week in month.weeks %}
+      <div class="cal-row" role="row">
+        {% for c in week %}
+        {% set classes = ["cal-day", "cal-" ~ (c.day_type or "none")] %}
+        {% if not c.in_month %}{% set classes = classes + ["is-outside"] %}{% endif %}
+        {% if c.is_today %}{% set classes = classes + ["is-today"] %}{% endif %}
+        {% if c.absence %}{% set classes = classes + ["has-absence", "abs-" ~ c.absence] %}{% endif %}
+        {% if selected_day and selected_day == c.date %}{% set classes = classes + ["is-selected"] %}{% endif %}
+        {% if c.in_period %}
+        <a role="gridcell" class="{{ classes|join(' ') }}" href="/kalender/tag/{{ c.date.isoformat() }}"
+           hx-get="/kalender/tag/{{ c.date.isoformat() }}" hx-target="#day-panel" hx-swap="innerHTML show:#day-panel:top"
+           title="{{ c.title }}" aria-label="{{ c.title }}" data-day="{{ c.date.isoformat() }}" data-select>
+          <span class="cal-num">{{ c.date.day }}</span>
+          {% if c.absence %}<span class="cal-mark">{{ c.absence_short }}</span>
+          {% elif c.holiday_name %}<span class="cal-mark cal-mark-holiday" aria-hidden="true">•</span>{% endif %}
+          {% if c.note %}<span class="cal-note-dot" aria-hidden="true"></span>{% endif %}
+        </a>
+        {% else %}
+        <span role="gridcell" class="{{ classes|join(' ') }} is-disabled" title="{{ c.date|date_de }} – außerhalb des Schuljahrs"><span class="cal-num">{{ c.date.day }}</span></span>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <ul class="cal-legend" aria-label="Legende">
+      <li><span class="cal-swatch cal-schultag"></span>Schultag</li>
+      <li><span class="cal-swatch cal-ferientag"></span>Ferien</li>
+      <li><span class="cal-swatch cal-unterrichtsfrei"></span>Unterrichtsfrei</li>
+      <li><span class="cal-swatch cal-feiertag"></span>Feiertag</li>
+      <li><span class="cal-swatch cal-wochenende"></span>Wochenende</li>
+      <li><span class="cal-swatch abs-urlaub has-absence"></span>Url Urlaub</li>
+      <li><span class="cal-swatch abs-krank has-absence"></span>kr krank</li>
+      <li><span class="cal-swatch abs-fortbildung has-absence"></span>Fb Fortbildung</li>
+      <li><span class="cal-swatch abs-dienstbefreiung has-absence"></span>Db/SU/EZ Dienstbefreiung, Sonderurlaub, Elternzeit</li>
+    </ul>
+    <p class="text-xs text-muted">Tag antippen, um Abwesenheit, unterrichtsfreien Tag oder Notiz zu setzen{% if manual_mode %} bzw. Urlaubstage zu wählen{% endif %}.</p>
+  </section>
+
+  <div id="day-panel" class="cal-day-panel" data-panel aria-live="polite"></div>
+
+  {% if month.events %}
+  <section class="card" aria-labelledby="cal-events-title">
+    <h2 class="card-title" id="cal-events-title">Im {{ month.label.split(' ')[0] }}</h2>
+    <ul class="list cal-events">
+      {% for e in month.events %}
+      <li class="list-item">
+        <span class="cal-swatch cal-ev-{{ e.kind }}"></span>
+        <div class="list-item-main">
+          <span class="text-small text-strong num">{{ e.date|weekday_de }} {{ e.date|date_short }}{% if e.end %} – {{ e.end|weekday_de }} {{ e.end|date_short }}{% endif %}</span>
+          <span class="text-small"> {{ e.text }}</span>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {# ---------------------------------------------------------------- leave #}
+  <section class="card" aria-labelledby="leave-title">
+    <div class="card-header row-between">
+      <h2 class="card-title" id="leave-title">Urlaub ({{ settings.urlaubstage }} Tage)</h2>
+      <a class="btn btn-ghost btn-sm" href="/kalender/einrichtung?periode={{ period.id }}&amp;schritt=4">Modus</a>
+    </div>
+    {{ cm.leave_card(leave, manual_mode) }}
+    {% if manual_mode %}
+    <details class="admin-details mt-3">
+      <summary>Vorlage übernehmen</summary>
+      <form method="post" action="/kalender/urlaub/vorlage" class="stack-sm mt-3"
+            data-confirm="Bisher gewählte Urlaubstage werden durch die Vorlage ersetzt. Fortfahren?">
+        {{ cm.csrf(request) }}
+        <input type="hidden" name="periode" value="{{ period.id }}">
+        <input type="hidden" name="next" value="/kalender?periode={{ period.id }}&monat={{ '%04d-%02d'|format(month.year, month.month) }}">
+        <p class="text-small text-muted">Füllt die Urlaubstage nach einer automatischen Regel vor; danach kannst du einzelne Tage im Kalender ändern.</p>
+        <div class="btn-group">
+          <button type="submit" name="vorlage" value="sommerferien_zuerst" class="btn btn-secondary btn-sm">Sommerferien zuerst</button>
+          <button type="submit" name="vorlage" value="proportional" class="btn btn-secondary btn-sm">Proportional</button>
+        </div>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="compare-title">
+    <h2 class="card-title" id="compare-title">Vergleich der Urlaubsvarianten</h2>
+    {{ cm.compare_card(compare) }}
+  </section>
+
+  {# ---------------------------------------------------------------- range #}
+  <section class="card" aria-labelledby="range-title">
+    <details class="admin-details">
+      <summary id="range-title">Zeitraum eintragen (z. B. Krankheit, Fortbildungswoche)</summary>
+      <form method="post" action="/kalender/zeitraum" class="stack-sm mt-3">
+        {{ cm.csrf(request) }}
+        <input type="hidden" name="next" value="/kalender?periode={{ period.id }}&monat={{ '%04d-%02d'|format(month.year, month.month) }}">
+        <div class="form-row">
+          <div class="field"><label for="r-start">Von</label><input id="r-start" type="date" name="start" required min="{{ period.start.isoformat() }}" max="{{ period.end.isoformat() }}"></div>
+          <div class="field"><label for="r-end">Bis</label><input id="r-end" type="date" name="end" required min="{{ period.start.isoformat() }}" max="{{ period.end.isoformat() }}"></div>
+        </div>
+        <div class="field">
+          <label for="r-abs">Abwesenheit</label>
+          <select id="r-abs" name="absence_type">
+            <option value="">keine</option>
+            {% for value, label in absence_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="r-type">Tagestyp</label>
+          <select id="r-type" name="day_type">
+            <option value="">automatisch (Kalender)</option>
+            {% for value, label in day_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="r-note">Notiz</label>
+          <input id="r-note" name="note" maxlength="500" placeholder="Keine Namen von Kindern oder Eltern">
+        </div>
+        <label class="check"><input type="checkbox" name="auch_wochenende" value="1"> auch Samstage und Sonntage</label>
+        <p class="field-hint">Alle Felder leer lassen, um Eingaben im Zeitraum zu entfernen. Urlaub wird über die Urlaubszuordnung gesetzt.</p>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Eintragen</button></div>
+      </form>
+    </details>
+  </section>
+
+  {# ---------------------------------------------------------------- links #}
+  <nav class="card card-flush" aria-label="Kalender verwalten">
+    <a class="menu-item" href="/kalender/ferien?periode={{ period.id }}">
+      <span class="menu-icon">{{ icon("calendar", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Ferien</span><span class="menu-hint">{{ ferien|length }} Abschnitt(e) · bearbeiten, ICS-Import</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+    <a class="menu-item" href="/kalender/einrichtung?periode={{ period.id }}&amp;schritt=3">
+      <span class="menu-icon">{{ icon("info", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Feiertage</span><span class="menu-hint">Gesetzliche und regionale Feiertage prüfen</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+    <a class="menu-item" href="/kalender/einrichtung?periode={{ period.id }}&amp;schritt=1">
+      <span class="menu-icon">{{ icon("settings", 22) }}</span>
+      <span class="menu-text"><span class="menu-label">Einrichtungsassistent</span><span class="menu-hint">Schuljahr, Ferien, Feiertage, Urlaub Schritt für Schritt</span></span>
+      {{ icon("chevron-right", 18, "icon menu-chevron") }}
+    </a>
+  </nav>
+</div>
+{% endblock %}

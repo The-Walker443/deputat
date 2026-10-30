@@ -1,0 +1,13 @@
+{# Screen toolbar injected into a report document (never stored, hidden in print).
+   Self-contained styles in months.css (.months-report-bar) – app.css is not loaded in reports. #}
+<nav class="months-report-bar" aria-label="Bericht">
+  <div class="months-report-bar-inner">
+    <a class="months-rb-btn months-rb-back" href="{{ back_href }}">&larr; {{ back_label }}</a>
+    <span class="months-rb-mode{% if warn %} is-warn{% endif %}">{{ mode_label }}</span>
+    <span class="months-rb-actions">
+      {% for t in toggles %}<a class="months-rb-btn" href="{{ t.href }}">{{ t.label }}</a>{% endfor %}
+      <a class="months-rb-btn" href="{{ download_href }}">Herunterladen</a>
+      <button type="button" class="months-rb-btn months-rb-primary" data-print>Drucken / PDF</button>
+    </span>
+  </div>
+</nav>
