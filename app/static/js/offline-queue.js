@@ -1,10 +1,13 @@
-/* Deputat – offline queue for timer actions (Konzept §8.4).
+/* Deputat – offline queue for timer actions (Konzept §8.4) and day totals (screen "Erfassen").
  *
- * Every timer action is first written to IndexedDB ("deputat" / store "actions", ordered by an
+ * Every action is first written to IndexedDB ("deputat" / store "actions", ordered by an
  * auto-increment key) and then sent in order. The device time of the tap travels in the body, so a
  * late sync never shifts start/stop times; the server dedupes via body.client_action_id.
  *
  *   window.deputatQueue.enqueue(item)   item = {id, type, url, body, label, created_at} -> Promise<item>
+ *        optional item fields: method ("POST" default, e.g. "PUT"), coalesce (key: a newer item with the
+ *        same key replaces pending ones – last write wins), discardOnConflict (a 4xx answer drops the item
+ *        and emits "rejected" instead of blocking the queue)
  *   window.deputatQueue.list()          pending items in order
  *   window.deputatQueue.flush()         send in order; stops at the first failure
  *   window.deputatQueue.resolve(mode)   after a conflict: "discard" (drop the item) | "retry"
@@ -15,13 +18,17 @@
  *        synced   {sent}                   queue is empty after a flush (sent = actions sent now)
  *        offline  {}                       network error, will retry
  *        conflict {action, status, message}  409/400/422/423: needs the user's decision (queue blocked)
+ *        rejected {action, status, message, data}  same for a discardOnConflict item: dropped, queue goes on
  *        auth     {}                       Cloudflare Access session expired (redirect / non-JSON);
  *                                          queue is KEPT and blocked until unblock() or reload
  *        error    {action, status, message}  5xx: retried later
  *   window.deputatQueue.classify(response) shared response classification (also used by timer.js)
  *
- * Flushing happens on enqueue, page load, the "online" event, when the page becomes visible and
- * every 30 s while items are pending. Without IndexedDB (private mode) an in-memory list is used.
+ * Flushing happens on enqueue, page load, the "online" event, when the page becomes visible, every 30 s
+ * while items are pending and – after a network error – again after 5 s, 10 s, 20 s, 30 s (backoff,
+ * while the page is visible). window.deputatQueue.unreachable is true from a network error until the next
+ * answer of the server (navigator.onLine stays true on a flaky school WLAN). Without IndexedDB (private
+ * mode) an in-memory list is used.
  */
 (function () {
   "use strict";
@@ -29,6 +36,7 @@
   const DB_NAME = "deputat";
   const STORE = "actions";
   const RETRY_MS = 30000;
+  const BACKOFF_MS = [5000, 10000, 20000, 30000];
   const CONFLICT_STATUSES = [400, 404, 405, 409, 410, 422, 423];
 
   const listeners = {};
@@ -38,6 +46,9 @@
   let flushing = null;
   let blocked = null; // null | "auth" | "conflict"
   let conflictItem = null;
+  let unreachable = false;
+  let backoffStep = 0;
+  let backoffTimer = null;
 
   function emit(name, detail) {
     (listeners[name] || []).forEach((fn) => {
@@ -100,6 +111,7 @@
   async function enqueue(item) {
     const record = Object.assign({ created_at: Date.now() }, item);
     delete record.seq;
+    if (record.coalesce) await dropCoalesced(record.coalesce);
     const db = await openDb();
     if (!db) {
       record.seq = ++memorySeq;
@@ -113,6 +125,19 @@
     emit("change", { count: await count() });
     flush();
     return record;
+  }
+
+  /* Remove pending items with the same coalesce key (an item already in flight is sent anyway; the newer
+   * item follows it, so the last write still wins). */
+  async function dropCoalesced(key) {
+    const stale = (await list()).filter((r) => r.coalesce === key);
+    if (!stale.length) return;
+    const db = await openDb();
+    if (!db) {
+      memory = memory.filter((r) => r.coalesce !== key);
+      return;
+    }
+    await tx(db, "readwrite", (store) => { stale.forEach((r) => store.delete(r.seq)); });
   }
 
   async function remove(seq) {
@@ -172,11 +197,11 @@
     return false;
   }
 
-  async function postJSON(url, body, retried) {
+  async function postJSON(url, body, retried, method) {
     let res;
     try {
       res = await fetch(url, {
-        method: "POST",
+        method: method || "POST",
         credentials: "same-origin",
         redirect: "manual",
         cache: "no-store",
@@ -197,7 +222,7 @@
     if (kind === "retry") return { kind: "retry", status: res.status, message };
     if (res.status === 403 && /csrf/i.test(message) && !retried) {
       // Session cookie rotated (e.g. expired): fetch a fresh token once and resend.
-      if (await refreshCsrf()) return postJSON(url, body, true);
+      if (await refreshCsrf()) return postJSON(url, body, true, method);
       return { kind: "auth", status: res.status };
     }
     if (res.status === 401 || res.status === 403) return { kind: "auth", status: res.status, message };
@@ -206,6 +231,16 @@
   }
 
   // ------------------------------------------------------------------ flush
+
+  function scheduleRetry() {
+    if (backoffTimer) return;
+    const ms = BACKOFF_MS[Math.min(backoffStep, BACKOFF_MS.length - 1)];
+    backoffStep += 1;
+    backoffTimer = setTimeout(() => {
+      backoffTimer = null;
+      if (document.visibilityState !== "hidden") flush();
+    }, ms);
+  }
 
   function flush() {
     if (flushing) return flushing;
@@ -219,21 +254,30 @@
         const item = (await list())[0];
         if (!item || item.seq === lastSeq) break; // guard: never resend an item we just removed
         lastSeq = item.seq;
-        const result = await postJSON(item.url, item.body);
+        const result = await postJSON(item.url, item.body, false, item.method);
+        if (result.kind !== "network") unreachable = false;
         if (result.kind === "ok") {
+          backoffStep = 0;
           await remove(item.seq);
           sent += 1;
           emit("applied", { action: item, data: result.data });
           continue;
         }
         if (result.kind === "network") {
+          unreachable = true;
           emit("offline", {});
+          scheduleRetry();
           return { status: "offline" };
         }
         if (result.kind === "auth") {
           blocked = "auth";
           emit("auth", {});
           return { status: "auth" };
+        }
+        if (result.kind === "conflict" && item.discardOnConflict) {
+          await remove(item.seq);
+          emit("rejected", { action: item, status: result.status, message: result.message, data: result.data });
+          continue;
         }
         if (result.kind === "conflict") {
           blocked = "conflict";
@@ -283,5 +327,6 @@
   window.deputatQueue = {
     enqueue, list, count, flush, resolve, unblock, on, classify, postJSON, refreshCsrf,
     get blocked() { return blocked; },
+    get unreachable() { return unreachable; },
   };
 })();

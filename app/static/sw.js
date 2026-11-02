@@ -1,17 +1,18 @@
 /* Deputat service worker (served from /sw.js so its scope is the whole app).
  *
- * - App shell (CSS/JS/vendor/icons, /heute, /offline) is precached under a versioned cache name.
+ * - App shell (CSS/JS/vendor/icons, /erfassen (home), /heute, /offline) is precached under a versioned cache name.
  * - Served by GET /sw.js (app/web/assets.py), which injects the asset version (a hash over all static
  *   files) and the per-file content hashes: any asset change yields a new cache name, so the browser
  *   installs the new worker, which re-precaches the shell and drops the old cache.
  * - Static assets: cache-first by exact URL (the ?v=<content hash> query from static_url() busts it when
  *   the file changes), then network (stored), offline fallback ignoring the query string.
  * - Page navigations (HTML): network-first; successful same-origin pages are stored, offline falls back
- *   to the cached page ("/" -> "/heute") or /offline.
+ *   to the cached page ("/" -> "/erfassen") or /offline.
  * - API GET: network-first with cache fallback (never /api/csrf, /api/timer – a stale timer status
  *   would undo optimistic state –, exports, backups, sensors).
  * - HTMX partial GETs: network only (stale fragments are worse than a failed refresh).
- * - Never touches non-GET requests: timer POSTs are queued by static/js/offline-queue.js.
+ * - Never touches non-GET requests: timer POSTs and day-total PUTs are queued by static/js/offline-queue.js.
+ * - The week block of /erfassen fetched for week switching (header X-Erfassen-Partial) is network only.
  *
  * Redirects are passed through untouched (navigations and the page's fetch(redirect: "manual") get
  * the opaqueredirect they asked for), so an expired Cloudflare Access session is detected by the page
@@ -31,12 +32,15 @@ function versioned(url) {
 }
 
 const SHELL_ASSETS = [
+  "/erfassen",
   "/heute",
   "/offline",
   versioned("/static/css/app.css"),
   versioned("/static/js/app.js"),
   versioned("/static/js/timer.js"),
   versioned("/static/js/offline-queue.js"),
+  versioned("/static/js/erfassen.js"),
+  versioned("/static/css/erfassen.css"),
   versioned("/static/vendor/htmx.min.js"),
   versioned("/static/vendor/alpine.min.js"),
   "/static/icons/icon.svg",
@@ -112,7 +116,7 @@ async function pageNetworkFirst(request, url) {
     return res; // includes opaqueredirect (Cloudflare Access login) untouched
   } catch (_) {
     const cached = (await caches.match(key)) ||
-      (url.pathname === "/" ? await caches.match(url.origin + "/heute") : undefined) ||
+      (url.pathname === "/" ? await caches.match(url.origin + "/erfassen") : undefined) ||
       (await caches.match(url.origin + "/offline"));
     if (cached) return cached;
     return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
@@ -149,6 +153,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (request.headers.get("HX-Request")) return; // HTMX partials: network only
+  if (request.headers.get("X-Erfassen-Partial")) return; // week block of /erfassen: network only
   if (request.mode === "navigate") {
     event.respondWith(pageNetworkFirst(request, url));
   }

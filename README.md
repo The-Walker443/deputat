@@ -27,17 +27,19 @@ Die genauen Rechenregeln (mit allen Sonderfällen) stehen in [docs/RECHENREGELN.
 
 ## Funktionen
 
-Unten gibt es fünf Reiter: **Heute · Woche · Konto · Jahr · Mehr**. Unter *Mehr* liegen Einträge, Kalender,
-Stundenplan, Monate & Berichte, Import, Export & Backup, Schreiben und Einstellungen.
+Unten gibt es fünf Reiter: **Erfassen · Timer · Konto · Jahr · Mehr**. Die Startseite ist *Erfassen*. Unter *Mehr*
+liegen das Wochenraster, Einträge, Kalender, Stundenplan, Monate & Berichte, Import, Export & Backup, Schreiben und
+Einstellungen.
 
 | Bereich | Was er kann |
 |---|---|
-| **Heute** | Großer Start/Stopp-Knopf, Kategorie-Chips (Wechsel mit einem Tipp), *Pause* / *Weiter*, optional Klasse, Fach, Ort. Kacheln: Ist heute, Soll heute, Saldo gesamt, Woche Ist/Soll, nächste Ferien mit Abbau-Kapazität. Stundenplan-Vorschläge mit „Tag wie geplant“. Funktioniert **offline**: Timer-Aktionen werden auf dem Gerät gespeichert und später in der richtigen Reihenfolge übertragen – maßgeblich ist immer die Uhrzeit des Tipps, nicht die der Übertragung. |
+| **Erfassen** (Startseite) | Die schnellste Art zu erfassen: eine Woche Mo–So, je Tag ein großes Feld für die **Stunden des Tages** (`8`, `7,5` oder `7,30` = 7 Std. 30 Min.; leer = nichts erfasst). Speichert beim Verlassen des Feldes bzw. mit Enter, Enter springt zum nächsten Tag – eine ganze Woche ist in Sekunden eingetragen. Wochen wechseln per Pfeil, Wischen oder „Diese Woche“. Je Tag Ferien/Feiertag/Urlaub/Krank-Hinweis und Soll, oben die Wochensumme gegen das Soll mit Saldo. Funktioniert **offline** (Werte werden auf dem Gerät gespeichert und nachgereicht). Abgeschlossene Monate sind nur lesbar (Korrektur über *Einträge* mit Begründung). |
+| **Timer** | Großer Start/Stopp-Knopf, Kategorie-Chips (Wechsel mit einem Tipp), *Pause* / *Weiter*, optional Klasse, Fach, Ort. Kacheln: Ist heute, Soll heute, Saldo gesamt, Woche Ist/Soll, nächste Ferien mit Abbau-Kapazität. Stundenplan-Vorschläge mit „Tag wie geplant“. Funktioniert **offline**: Timer-Aktionen werden auf dem Gerät gespeichert und später in der richtigen Reihenfolge übertragen – maßgeblich ist immer die Uhrzeit des Tipps, nicht die der Übertragung. |
 | **Einträge** | Alle Einträge mit Filter; *Neu* bzw. *Nachtragen* mit Von–Bis oder „Nur Dauer“. Jede Änderung erzeugt eine **Revision** (Verlauf je Eintrag einsehbar), Löschen ist nur ein Ausblenden und lässt sich wiederherstellen. |
 | **Stundenplan** | Wochenraster mit Zeitraster der Schule, Versionen mit Gültigkeit (Halbjahreswechsel). Für jeden Schultag entstehen Vorschläge, die erst nach Bestätigung zählen; einzelne Stunden lassen sich unter *Offene Tage* (`/tage`) bzw. pro Tag (`/tag/<datum>`, auch aus der Woche und den Hinweisen erreichbar) auf *entfallen*, *Vertretung gehalten*, *Exkursion* oder *Zeit angepasst* setzen. |
 | **Kalender** | Einrichtungs-Assistent (Schuljahr → Ferien → Feiertage → Urlaub). Die **amtlichen bayerischen Ferientermine** (Schuljahre 2024/25 bis 2029/30) bringt die App mit und übernimmt sie beim Anlegen des Schuljahres automatisch (Kennzeichen „amtlich“, bearbeitbar); andere Termine per ICS-Datei oder von Hand. Bayerische Feiertage werden berechnet (regional: Mariä Himmelfahrt, Augsburger Friedensfest). Je Tag oder Zeitraum: krank, Fortbildung, Dienstbefreiung, Sonderurlaub, Elternzeit, unterrichtsfreier Tag. **Urlaubszuordnung** der 30 Urlaubstage: Sommerferien zuerst, proportional oder manuell. |
 | **Konto** | Saldo-Verlauf über das Schuljahr (Ferien und Urlaub schattiert) mit Prognose-Linie. Kacheln: Saldo heute (in Stunden und Arbeitstagen), Prognose Periodenende, J_soll, Ist bisher, Ferienarbeit, Woche Ist / W_max, EU-12-Monats-Mittel mit Ampel, Schulwochen > 48 h. **Ferien-Guthaben-Rechner**, Vergleich der Urlaubsmodi, Umschalter Klassenfahrt-Variante A/B. |
-| **Woche / Jahr** | Woche: Einträge als Blöcke, Ist/Soll je Tag, Wochen-Ist gegen Soll und W_max. Jahr: Heatmap aller Tage, Kategorienverteilung mit Unterrichtsanteil, Verteilung der Schulwochen (Marken bei 40 und 48 h), Monatsliste. |
+| **Woche (Raster) / Jahr** | Woche (unter *Mehr* und aus *Erfassen* erreichbar): Einträge als Blöcke, Ist/Soll je Tag, Wochen-Ist gegen Soll und W_max. Jahr: Heatmap aller Tage, Kategorienverteilung mit Unterrichtsanteil, Verteilung der Schulwochen (Marken bei 40 und 48 h), Monatsliste. |
 | **Monate & Berichte** | **Monatsabschluss** mit Prüfung offener Punkte, Prüf-Hash und Sperre; Mehrarbeit (Art. 87 BayBG) je Monat mit Status. Monats- und Jahresbericht als HTML zum Drucken bzw. „Als PDF speichern“, mit vollständiger Eintragsliste und Änderungsprotokoll. |
 | **Import** | Bestehende Aufzeichnungen aus CSV/XLSX in vier Schritten (Hochladen, Spalten zuordnen, Prüfen, Übernehmen). Dezimalstunden („2,5“) und „h:mm“ werden erkannt, Duplikate markiert, ein Import kann als Ganzes rückgängig gemacht werden. |
 | **Export & Backup** | CSV (für Excel), JSON-Vollbackup, ICS (Kalenderansicht); CSV und ICS tragen einen Prüf-Hash. Nächtliches Datenbank-Backup, „Backup jetzt“, Wiederherstellen aus JSON. |
@@ -181,8 +183,9 @@ Deputat ist darauf ausgelegt, dass die Aufzeichnungen einer Prüfung standhalten
   dieses Kennzeichen automatisch – sichtbar in Listen, Berichten und Exporten, nicht entfernbar.
 - **„korrigiert“:** wenn Start/Ende eines Timer-Eintrags nachträglich geändert werden oder ein Eintrag in einem
   abgeschlossenen Monat geändert wird. Ebenfalls nicht entfernbar.
-- **„ohne Zeitgrenzen“:** Einträge nur mit Dauer (z. B. aus einem Import) – geringere Beweiskraft, deshalb
-  wenn möglich Von–Bis erfassen.
+- **„ohne Zeitgrenzen“:** Einträge nur mit Dauer (z. B. aus einem Import oder die Tagessumme von *Erfassen*) –
+  geringere Beweiskraft, deshalb wenn möglich Von–Bis erfassen. Auch eine Tagessumme hat Revisionen und
+  „nachträglich“; sie ist ehrlich als pauschal gekennzeichnet (Kategorie *AZ*).
 - **Monatsabschluss** (*Monate → Monat → Monat abschließen*): Die App prüft offene Punkte (unbestätigte
   Stundenplan-Vorschläge, Schultage ohne Eintrag), berechnet einen **Prüf-Hash (SHA-256)** über alle Einträge
   des Monats, sperrt die Einträge und legt den Bericht unveränderlich als `/data/reports/JJJJ-MM.html` ab.
@@ -242,6 +245,18 @@ wiederhergestellten Einträge und lehnt die ganze Wiederherstellung ab, wenn ein
 
 ## FAQ
 
+**Muss ich jede Tätigkeit einzeln erfassen?**
+Nein. Am einfachsten trägst du auf der Startseite *Erfassen* nur die **Stunden pro Tag** ein – das ist besser, als gar
+nicht zu erfassen. Die App legt dafür je Tag genau einen Eintrag „Tagessumme“ an (Kategorie *AZ – Arbeitszeit
+(pauschal, nicht aufgeschlüsselt)*, ohne Uhrzeiten). Hast du an einem Tag schon einzelne Einträge (Timer,
+Stundenplan, Import, *Einträge → Neu*), zeigt das Feld die Gesamtzeit des Tages; eine neue Zahl ändert nur den
+pauschalen Rest – weniger als die einzeln erfassten Stunden geht nicht. Kommen nach deiner Tagessumme noch einzelne
+Einträge dazu (z. B. ein gestoppter Timer), fragt die Zeile einmal: zurück auf deine Zahl oder die neue Summe
+übernehmen. Für die Beweiskraft gilt: Einträge mit Von–Bis
+und Kategorie sind besser (Unterrichtsanteil, Mehrarbeit, Kategorie-Statistik); pauschale Tagessummen tragen das
+Kennzeichen *ohne Zeitgrenzen* und später erfasste zusätzlich *nachträglich*. Details:
+[docs/RECHENREGELN.md](docs/RECHENREGELN.md#4a-tagessumme-startseite-erfassen).
+
 **Warum ist mein Saldo in den Sommerferien negativ?**
 Das Schuljahr beginnt am 01.08., mitten in den Sommerferien, und jedes Schuljahr startet bei 0. Mit „Sommerferien
 zuerst“ sind die ersten 30 Werktage der Sommerferien Urlaub (Soll 0) – das Konto bleibt dort neutral. Negativ wird
@@ -300,15 +315,18 @@ gilt für Kalenderänderungen (z. B. Krankheitstag nachtragen), die einen abgesc
 „öffnen“ lässt sich ein Monat nicht. Den gespeicherten Abschlussbericht überschreibt die App nie.
 
 **Funktioniert die App offline?**
-Ja, für den Timer: Start, Stopp, Wechsel und Pause werden auf dem Handy zwischengespeichert und automatisch
-übertragen, sobald wieder Netz da ist – mit der Uhrzeit des Tipps. Zuletzt geladene Seiten sind offline lesbar;
+Ja, für den Timer und die Tagesstunden auf *Erfassen*: Start, Stopp, Wechsel und Pause bzw. die eingetragenen Stunden
+werden auf dem Handy zwischengespeichert und automatisch übertragen, sobald wieder Netz da ist – jeweils mit der
+Uhrzeit der Eingabe (auf *Erfassen* zeigt die Zeile bis dahin „nicht verbunden – wird übertragen“, die Wochensumme ist
+„vorläufig“). Zuletzt geladene Seiten sind offline lesbar;
 Einträge bearbeiten, Berichte und Exporte brauchen eine Verbindung. Ist die Cloudflare-Anmeldung abgelaufen, zeigt
 die App „Sitzung abgelaufen – bitte Seite neu laden“; die gespeicherten Timer-Aktionen bleiben erhalten.
 
 **Wie spiele ich ein Backup zurück?**
 JSON-Backup: *Mehr → Export & Backup → Wiederherstellen*, Datei wählen, „ERSETZEN“ eintippen. Achtung: Alle
 aktuellen Daten werden durch den Stand der Sicherung ersetzt (vorher legt die App automatisch eine
-Sicherheitskopie an). Ein JSON-Backup passt nur zur selben Datenbank-Version der App. Die nächtlichen
+Sicherheitskopie an). Ein JSON-Backup passt nur zur selben Datenbank-Version der App (Ausnahme: reine
+Daten-Migrationen – eine Sicherung von Version 0004 lässt sich in 0005 einspielen). Die nächtlichen
 Datenbank-Backups (`/data/backups/JJJJ-MM-TT.sqlite.gz`) werden auf dem Server eingespielt – Anleitung in
 [DEPLOY.md](DEPLOY.md#daten-backup-wiederherstellung); dabei laufen nötige Migrationen automatisch.
 

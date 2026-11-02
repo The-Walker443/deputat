@@ -119,11 +119,13 @@ def _rule_missing_day(db: Session, now: datetime, today: date) -> list[dict[str,
     if count:
         return []
     when = "gestern" if day.date == today - timedelta(days=1) else f"am {_date_de(day.date)}"
+    iso = day.date.isocalendar()
+    # Lowest hurdle: the day's field on the "Erfassen" screen (focused via ?tag=).
     return [_hint(
         f"tag-ohne-eintrag:{day.date.isoformat()}",
         "info",
         f"Für den Schultag {when} ist noch nichts erfasst.",
-        f"/eintraege/neu?datum={day.date.isoformat()}",
+        f"/erfassen/{iso[0]}-W{iso[1]:02d}?tag={day.date.isoformat()}",
         "Nachtragen",
     )]
 

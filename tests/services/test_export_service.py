@@ -115,7 +115,7 @@ def test_csv_date_filter_and_semicolons_quoted(db, data):
 def test_json_export_structure(db, data):
     backup = export.export_json(db)
     assert backup["format"] == "deputat-backup" and backup["format_version"] == 1
-    assert backup["schema_revision"] == "0004"
+    assert backup["schema_revision"] == "0005"
     assert set(backup["tables"]) >= {"settings", "time_entry", "time_entry_revision", "month_close", "period",
                                      "ferien", "category", "calendar_day", "backup_log", "mehrarbeit_month"}
     assert backup["counts"]["time_entry"] == db.scalar(select(func.count()).select_from(TimeEntry))

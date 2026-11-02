@@ -201,6 +201,9 @@ def test_more_tab_matches_reports():
     assert not is_active(_Req("/exporte-gibt-es-nicht"), more)
     heute = next(i for i in NAV_ITEMS if i["href"] == "/heute")
     assert not is_active(_Req("/export"), heute)
+    erfassen = next(i for i in NAV_ITEMS if i["href"] == "/erfassen")
+    assert is_active(_Req("/erfassen/2026-W45"), erfassen) and is_active(_Req("/woche"), erfassen)
+    assert not is_active(_Req("/heute"), erfassen)
 
 
 # --------------------------------------------------------------------------- forced close note

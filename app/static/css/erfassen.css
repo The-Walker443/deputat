@@ -1,0 +1,168 @@
+/* Deputat – home screen "Erfassen" (templates/erfassen.html, partials/erfassen_week.html, js/erfassen.js).
+   Mobile first (360–430 px, one hand): big week arrows, one large duration field per day. Tokens: app.css. */
+
+.qe { gap: var(--space-3); }
+.qe-root.is-loading .qe { opacity: 0.55; transition: opacity 120ms ease; }
+
+/* ---------------------------------------------------------------- week header */
+/* Sticky below the topbar: the arrows stay reachable while typing Fr–So with the keyboard open. */
+.qe-nav {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: var(--space-2);
+  position: sticky; top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)); z-index: 6;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--gutter)) 0; padding: var(--space-2) var(--gutter);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.qe-root.is-sliding-next .qe-days { animation: qe-slide-next 180ms ease-out; }
+.qe-root.is-sliding-prev .qe-days { animation: qe-slide-prev 180ms ease-out; }
+@keyframes qe-slide-next { from { transform: translateX(24px); opacity: 0.4; } }
+@keyframes qe-slide-prev { from { transform: translateX(-24px); opacity: 0.4; } }
+.qe-arrow {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: var(--radius-pill);
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  text-decoration: none; box-shadow: var(--shadow-sm);
+}
+.qe-arrow:hover { color: var(--primary); border-color: var(--border-strong); }
+.qe-arrow:active { transform: scale(0.96); }
+.qe-nav-title { display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
+.qe-week-label { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.qe-week-label:focus { box-shadow: none; }
+.qe-today-link {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--space-3); margin-top: 2px;
+  border-radius: var(--radius-pill); background: var(--primary-soft); color: var(--primary);
+  font-size: var(--fs-sm); font-weight: 600; text-decoration: none;
+}
+
+/* ---------------------------------------------------------------- summary */
+.qe-summary {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.qe-summary-main { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); font-size: var(--fs-sm); }
+.qe-summary-main strong { font-size: var(--fs-md); }
+@media (min-width: 480px) { .qe-saldo::before { content: "·"; margin-right: var(--space-2); } }
+.qe-summary-sub a { color: var(--text-muted); }
+.qe-summary-note { margin-top: 2px; }
+.qe-summary-note .icon { vertical-align: -2px; color: var(--warn); }
+.qe-provisional {
+  align-self: center; padding: 0 6px; border-radius: var(--radius-pill); border: 1px dashed var(--warn);
+  color: var(--warn); font-size: var(--fs-xs); line-height: 1.5;
+}
+.qe-summary.is-provisional [data-qe-sum-ist],
+.qe-summary.is-provisional [data-qe-sum-delta],
+.qe-summary.is-provisional [data-qe-sum-konto] { text-decoration: underline dashed var(--warn); text-underline-offset: 3px; }
+.qe-summary-sub a:hover { color: var(--primary); }
+.is-positive { color: var(--positive); }
+.is-negative { color: var(--negative); }
+
+.qe-timer {
+  display: flex; align-items: center; gap: var(--space-2); align-self: flex-start;
+  min-height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-muted); font-size: var(--fs-sm); text-decoration: none;
+}
+.qe-timer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--running); flex: none;
+  animation: qe-pulse 1.6s ease-in-out infinite; }
+@keyframes qe-pulse { 50% { opacity: 0.35; } }
+
+.qe-sync:empty { display: none; }
+
+/* ---------------------------------------------------------------- day rows */
+.qe-form { margin: 0; }
+.qe-days {
+  list-style: none; margin: 0; padding: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.qe-day {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) 104px; align-items: center;
+  gap: var(--space-2); min-height: 68px; padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border); position: relative;
+}
+.qe-day:first-child { border-top: 0; }
+.qe-day.is-today { background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface)); }
+.qe-day.is-today::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--primary);
+}
+.qe-day.is-weekend { background: var(--surface-2); }
+.qe-day.is-weekend .qe-label,
+.qe-day.is-weekend .qe-info { opacity: 0.72; }
+
+.qe-label { display: flex; flex-direction: column; line-height: 1.15; cursor: pointer; }
+.qe-wd { font-size: var(--fs-lg); font-weight: 700; }
+.qe-date { font-size: var(--fs-xs); color: var(--text-muted); }
+.is-today .qe-wd { color: var(--primary); }
+
+.qe-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qe-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.qe-badges:empty { display: none; }
+.qe-badge { background: var(--surface-3); color: var(--text-muted); }
+.qe-badge-ferien { background: var(--info-soft); color: var(--info); }
+.qe-badge-feiertag { background: var(--warn-soft); color: var(--warn); }
+.qe-badge-urlaub { background: var(--success-soft); color: var(--success); }
+.qe-badge-krank { background: var(--danger-soft); color: var(--danger); }
+.qe-badge-fortbildung { background: var(--primary-soft); color: var(--primary); }
+.qe-badge-late { font-weight: 500; color: var(--text-muted); }
+.qe-meta {
+  font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.qe-meta:empty { display: none; }
+.qe-meta a { color: inherit; text-decoration: underline; }
+.qe-meta .icon { vertical-align: -2px; }
+.qe-status { font-size: var(--fs-xs); line-height: 1.35; font-weight: 550; }
+.qe-status:empty { display: none; }
+.qe-status.is-ok { color: var(--success); }
+.qe-status.is-pending { color: var(--warn); }
+.qe-status.is-error { color: var(--danger); }
+.qe-status a { color: inherit; }
+
+/* ---------------------------------------------------------------- the field
+   Scoped with #qe-week: the generic input rule of app.css (input:not(...)x4) is more specific than classes. */
+.qe-field { position: relative; }
+#qe-week .qe-input {
+  width: 100%; height: 52px; min-height: 52px; padding: 0 var(--space-3);
+  font: inherit; font-size: 1.5rem; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--text); background: var(--surface); caret-color: var(--primary);
+  border: 1.5px solid var(--border-strong); border-radius: var(--radius);
+  transition: border-color var(--transition), background var(--transition);
+  -webkit-appearance: none; appearance: none;
+}
+#qe-week .qe-input::placeholder { color: var(--text-faint); font-weight: 400; }
+#qe-week .qe-input:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+#qe-week .qe-input[readonly] {
+  background: var(--surface-2); color: var(--text-muted); border-style: dashed; padding-left: 28px;
+}
+.qe-lock { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
+#qe-week .qe-day.is-saved .qe-input { border-color: var(--success); }
+#qe-week .qe-day.is-pending .qe-input { border-color: var(--warn); border-style: dashed; }
+#qe-week .qe-day.is-error .qe-input { border-color: var(--danger); background: var(--danger-soft); }
+
+/* "Entries were added after your day total": one question, two answers, full row width. */
+.qe-prompt { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  padding: var(--space-2); border-radius: var(--radius); background: var(--warn-soft); }
+.qe-prompt[hidden] { display: none; }
+.qe-prompt-text { flex: 1 1 12rem; font-size: var(--fs-xs); line-height: 1.35; }
+.qe-prompt-actions { display: flex; gap: var(--space-2); }
+.qe-prompt .btn { min-height: 36px; }
+
+.qe-hint { padding: 0 var(--space-1); }
+.qe-hint kbd { font-family: inherit; font-weight: 650; color: var(--text); }
+
+/* Very narrow phones (≤ 360 px): slightly smaller field so the info column keeps room. */
+@media (max-width: 360px) {
+  .qe-day { grid-template-columns: 42px minmax(0, 1fr) 92px; padding: var(--space-2); }
+  #qe-week .qe-input { font-size: 1.375rem; padding: 0 var(--space-2); }
+  .qe-week-label { font-size: var(--fs-md); }
+}
+
+@media (min-width: 640px) {
+  .qe-day { grid-template-columns: 64px minmax(0, 1fr) 128px; padding: var(--space-2) var(--space-4); }
+  .qe-meta { -webkit-line-clamp: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qe-timer-dot { animation: none; }
+  .qe-root.is-sliding-next .qe-days, .qe-root.is-sliding-prev .qe-days { animation: none; }
+}

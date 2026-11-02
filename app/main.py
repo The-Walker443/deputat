@@ -64,10 +64,10 @@ STATIC_DIR = PROJECT_ROOT / "app" / "static"
 
 API_MODULES = (
     "timer", "entries", "days", "calendar", "account", "timetable", "months",
-    "export", "import_", "documents", "settings", "sensors", "backup",
+    "export", "import_", "documents", "settings", "sensors", "backup", "quick_entry",
 )
 WEB_MODULES = (
-    "pages", "today", "week", "account", "year", "entries", "calendar", "timetable",
+    "pages", "erfassen", "today", "week", "account", "year", "entries", "calendar", "timetable",
     "months", "import_", "documents", "settings", "days",
 )
 

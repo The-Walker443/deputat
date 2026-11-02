@@ -376,8 +376,14 @@
     await reloadPending();
   }
 
+  /* The queue also carries day totals of the "Erfassen" screen (type "day_total"): only timer actions
+   * shape the timer state. */
+  function timerItems(list) {
+    return list.filter((item) => item.type !== "day_total");
+  }
+
   async function reloadPending() {
-    pending = await Q.list();
+    pending = timerItems(await Q.list());
     derive();
     render();
   }
@@ -434,7 +440,7 @@
       console.error(err);
       flash("Aktion konnte nicht gespeichert werden.", "danger");
     }
-    pending = await Q.list();
+    pending = timerItems(await Q.list());
     derive();
     render();
   }
@@ -583,7 +589,19 @@
     root.addEventListener("click", onClick);
     setInterval(tick, 1000);
 
-    Q.on("change", (d) => setBadge(d.count));
+    // The badge counts timer actions only; queued day totals belong to the "Erfassen" screen.
+    const timerCount = async () => timerItems(await Q.list()).length;
+    Q.on("change", () => { timerCount().then(setBadge); });
+    // A day total entered offline on "Erfassen" may be rejected while this page flushes the shared queue
+    // (e.g. below the hours recorded individually meanwhile, or the month was closed): say so, with a link.
+    Q.on("rejected", (d) => {
+      const action = d.action || {};
+      if (action.type !== "day_total" || !action.date) return;
+      const p = action.date.split("-");
+      const label = p.length === 3 ? p[2] + "." + p[1] + "." : action.date;
+      flash("Stunden für den " + label + " nicht gespeichert: " + (d.message || "abgelehnt") +
+        " Bitte unter „Erfassen“ prüfen.", "warn");
+    });
     Q.on("applied", (d) => {
       if (d.data && Object.prototype.hasOwnProperty.call(d.data, "running")) server = fromApi(d.data);
       reloadPending();
@@ -599,21 +617,21 @@
     Q.on("conflict", (d) => {
       syncProblem = { kind: "conflict", action: d.action, message: d.message, status: d.status };
       renderSyncProblem();
-      Q.count().then(setBadge);
+      timerCount().then(setBadge);
     });
-    Q.on("auth", () => { syncProblem = { kind: "auth" }; renderSyncProblem(); Q.count().then(setBadge); });
+    Q.on("auth", () => { syncProblem = { kind: "auth" }; renderSyncProblem(); timerCount().then(setBadge); });
     Q.on("error", (d) => flash("Server nicht erreichbar (" + (d.status || "?") + ") – neuer Versuch folgt.", "warn"));
 
     derive();
     resetSegments();
-    pending = await Q.list();
+    pending = timerItems(await Q.list());
     pending.forEach(segmentApply);
     derive();
     render();
     handleShortcut();
 
-    window.addEventListener("online", () => Q.count().then(setBadge));
-    window.addEventListener("offline", () => Q.count().then(setBadge));
+    window.addEventListener("online", () => { timerCount().then(setBadge); });
+    window.addEventListener("offline", () => { timerCount().then(setBadge); });
     document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
       if ((await Q.count()) === 0) { await fetchStatus(); refreshPartials(); }

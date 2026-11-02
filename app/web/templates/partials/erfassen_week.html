@@ -1,0 +1,118 @@
+{% from "partials/icons.html" import icon %}
+{# One week of the "Erfassen" screen; also returned alone for week switching (header X-Erfassen-Partial).
+   View model: app.services.quick_entry.week_view. JS hooks: data-qe-* (static/js/erfassen.js).
+   The data-base-* / data-in-* attributes let the JS show provisional sums while a value is still queued. #}
+{% set w = week %}
+{% set weekend_empty = not (w.days[5].ist or w.days[6].ist or w.days[5].is_today or w.days[6].is_today) %}
+<section class="qe stack" id="qe-week" data-qe-week data-ref="{{ w.ref }}"
+         data-prev="/erfassen/{{ w.prev_ref }}" data-next="/erfassen/{{ w.next_ref }}" aria-labelledby="qe-week-label"
+         {%- if focus %} data-focus="{{ focus }}"{% endif %}>
+
+  <nav class="qe-nav" aria-label="Woche wechseln">
+    <a class="qe-arrow" href="/erfassen/{{ w.prev_ref }}" rel="prev" data-qe-nav aria-label="Vorherige Woche">{{ icon("chevron-left", 26) }}</a>
+    <div class="qe-nav-title">
+      <h2 class="qe-week-label" id="qe-week-label" tabindex="-1">{{ w.label }}</h2>
+      {% if not w.is_current %}
+      <a class="qe-today-link" href="/erfassen" data-qe-nav>Diese Woche</a>
+      {% endif %}
+    </div>
+    <a class="qe-arrow" href="/erfassen/{{ w.next_ref }}" rel="next" data-qe-nav aria-label="Nächste Woche">{{ icon("chevron-right", 26) }}</a>
+  </nav>
+
+  <div class="qe-summary" data-qe-summary aria-live="polite"
+       data-base-ist="{{ w.ist }}"{% if w.delta is not none %} data-base-delta="{{ w.delta }}"{% endif %}
+       {%- if w.saldo_konto is not none %} data-base-konto="{{ w.saldo_konto }}"{% endif %}>
+    <p class="qe-summary-main">
+      <span>Woche: <strong class="num" data-qe-sum-ist>{{ w.ist|hm }}</strong> h{% if w.soll is not none %} von
+        <span class="num">{{ w.soll|hm }}</span> (Soll){% endif %}</span>
+      <span class="qe-saldo"{% if w.delta is none %} hidden{% endif %} data-qe-saldo><span data-qe-saldo-label>Saldo{% if w.delta_until %} bis {{ w.delta_until }}{% endif %}</span>
+        <strong class="num{% if w.delta and w.delta > 0 %} is-positive{% elif w.delta and w.delta < 0 %} is-negative{% endif %}" data-qe-sum-delta>{{ (w.delta or 0)|hm(plus=True) }}</strong></span>
+      <span class="qe-provisional" data-qe-provisional hidden>vorläufig</span>
+    </p>
+    <p class="qe-summary-sub text-xs text-muted">
+      {% if w.saldo_konto is not none %}<a href="/konto">Konto <span class="num" data-qe-sum-konto>{{ w.saldo_konto|hm(plus=True) }}</span> h</a> · {% endif %}
+      <a href="/woche/{{ w.ref }}">Wochenraster &amp; Einzeleinträge</a>
+      {% if w.krank_gutschrift %}<span class="qe-krank-note"> · inkl. {{ w.krank_gutschrift|hm }} h Krank-Gutschrift</span>{% endif %}
+    </p>
+    {% if w.message %}
+    <p class="qe-summary-note text-xs">{{ icon("alert", 13) }} {{ w.message }}</p>
+    {% elif not w.has_any_period %}
+    <p class="qe-summary-note text-xs text-muted" data-qe-no-period>Soll und Saldo erscheinen, sobald ein Schuljahr
+      angelegt ist – erfassen geht schon jetzt.</p>
+    {% elif not w.has_period %}
+    <p class="qe-summary-note text-xs text-muted" data-qe-outside>Diese Woche liegt in keinem Schuljahr – nur die
+      erfasste Zeit, ohne Soll.</p>
+    {% endif %}
+  </div>
+
+  {% if timer %}
+  <a class="qe-timer" href="/heute" data-qe-timer>
+    <span class="qe-timer-dot" aria-hidden="true"></span>
+    <span>Timer läuft · {{ timer.code }} · seit {{ timer.since }}</span>
+    {{ icon("chevron-right", 16) }}
+  </a>
+  {% endif %}
+
+  <div class="qe-sync" data-qe-sync aria-live="polite"></div>
+
+  <form class="qe-form" data-qe-form novalidate autocomplete="off" action="#">
+    <ol class="qe-days">
+      {% for d in w.days %}
+      {% set id = "qe-" ~ d.date %}
+      {% set last_entry = loop.last or (loop.index == 5 and weekend_empty) %}
+      <li class="qe-day{% if d.is_today %} is-today{% endif %}{% if d.weekend %} is-weekend{% endif %}{% if d.locked %} is-locked{% endif %}{% if d.future %} is-future{% endif %}"
+          data-qe-day data-date="{{ d.date }}" data-saved="{{ d.ist }}" data-detail="{{ d.detail_seconds }}"
+          data-max="{{ d.max_seconds }}" data-entries-url="{{ d.entries_url }}"
+          {%- if d.soll is not none %} data-soll="{{ d.soll }}"{% endif %}
+          {%- if d.in_saldo %} data-in-saldo{% endif %}
+          {%- if d.in_period and not d.future %} data-in-konto{% endif %}
+          {%- if d.is_today %} data-today{% endif %}
+          {%- if last_entry %} data-last{% endif %}>
+        <label class="qe-label" for="{{ id }}">
+          <span class="qe-wd">{{ d.weekday }}</span>
+          <span class="qe-date num">{{ d.label_short }}</span>
+        </label>
+        <div class="qe-info">
+          <div class="qe-badges">
+            {%- if d.is_today %}<span class="badge badge-primary">heute</span>{% endif -%}
+            {%- for b in d.badges %}<span class="badge qe-badge qe-badge-{{ b.kind }}" title="{{ b.title }}">{{ b.label }}</span>{% endfor -%}
+          </div>
+          <p class="qe-meta" id="{{ id }}-meta" data-qe-meta>
+            {%- set parts = [] -%}
+            {%- if d.locked %}{{ icon("lock", 13) }} Monat abgeschlossen · <a href="{{ d.entries_url }}">korrigieren</a>{% set _ = parts.append(1) %}{% endif -%}
+            {%- if d.krank_neutral %}{% if parts %} · {% endif %}krank – zählt wie Soll{% set _ = parts.append(1) %}
+            {%- elif d.vor_erfassung %}{% if parts %} · {% endif %}vor Erfassungsbeginn – neutral{% set _ = parts.append(1) %}{% endif -%}
+            {%- if d.holiday_name %}{% if parts %} · {% endif %}{{ d.holiday_name }}{% set _ = parts.append(1) %}
+            {%- elif d.ferien_name %}{% if parts %} · {% endif %}{{ d.ferien_name }}{% set _ = parts.append(1) %}{% endif -%}
+            {%- if d.soll %}{% if parts %} · {% endif %}Soll {{ d.soll|hm }}{% set _ = parts.append(1) %}{% endif -%}
+            {%- if d.has_detail_entries %}{% if parts %} · {% endif %}<a href="{{ d.entries_url }}" data-qe-detail>inkl. <span class="num">{{ d.detail_seconds|hm }}</span> einzeln</a>{% set _ = parts.append(1) %}{% endif -%}
+            {%- if d.running %}{% if parts %} · {% endif %}<a href="/heute">Timer läuft (+<span class="num">{{ d.running_seconds|hm }}</span>)</a>{% endif -%}
+          </p>
+          <p class="qe-status" id="{{ id }}-status" data-qe-status role="status"></p>
+        </div>
+        <div class="qe-field">
+          <input id="{{ id }}" class="qe-input num" type="text" inputmode="decimal" pattern="[0-9]{0,2}([.,: ][0-9]{1,2})?"
+                 enterkeyhint="{{ 'done' if last_entry else 'next' }}" autocomplete="off" spellcheck="false"
+                 maxlength="8" placeholder="–" value="{{ d.ist|hm if d.ist else '' }}"
+                 aria-label="{{ d.aria_label }}" aria-describedby="{{ id }}-meta {{ id }}-status" data-qe-input
+                 {% if d.locked %}readonly aria-readonly="true"{% endif %}>
+          {% if d.locked %}<span class="qe-lock" aria-hidden="true">{{ icon("lock", 16) }}</span>{% endif %}
+        </div>
+        <div class="qe-prompt" data-qe-prompt{% if not d.prompt %} hidden{% endif %}>
+          {%- if d.prompt %}
+          <p class="qe-prompt-text">Nach deiner Tagessumme kamen <span class="num">{{ d.prompt.later|hm }}</span> h einzeln dazu.</p>
+          <div class="qe-prompt-actions">
+            <button type="button" class="btn btn-sm btn-secondary" data-qe-set="{{ d.prompt.keep }}">Auf {{ d.prompt.keep|hm }} zurück</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-qe-set="{{ d.prompt.total }}">{{ d.prompt.total|hm }} stimmt</button>
+          </div>
+          {%- endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </form>
+
+  <p class="qe-hint text-xs text-muted">Stunden pro Tag, z. B. <kbd>8</kbd>, <kbd>7,5</kbd> oder <kbd>7,30</kbd>
+    (= 7 Std. 30 Min.) – speichert automatisch. Leer = nichts erfasst. Genauer geht’s mit dem
+    <a href="/heute">Timer</a> oder unter <a href="/eintraege/neu?next=/erfassen/{{ w.ref }}">Einträge</a>.</p>
+</section>

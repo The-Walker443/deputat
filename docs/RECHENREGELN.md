@@ -99,6 +99,7 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
     Lücke bis zum Soll auf: Gutschrift = min(KR-Zeit, max(0, Soll − erfasste Arbeit)). Sie erzeugt nie ein Plus
     und erscheint nicht in Kategorie-Statistiken.
   - Einstellung aus: keine Gutschrift, Krankheitstage bauen das Konto ab.
+- **Tagessumme** von der Startseite *Erfassen*: ein normaler Eintrag ohne Zeitgrenzen, siehe §4a.
 - **Klassenfahrt** (Einstellung *Klassenfahrt-Bewertung*, Standard B): Betrifft jeden Tag mit mindestens einem
   Eintrag mit Kennzeichen *Klassenfahrt*.
   - Variante A: alle Einträge inkl. *Nachtbereitschaft*.
@@ -107,6 +108,67 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
     anteilig gekürzt.
 - **Große Pausen** zählen nur, wenn eingestellt (dann schlägt der Stundenplan sie als Aufsichts-/Präsenzzeit
   vor); Aufsichten zählen immer.
+
+## 4a. Tagessumme (Startseite „Erfassen“)
+
+`app/services/quick_entry.py`, API `PUT /api/days/{datum}/total`, `GET /api/weeks/{JJJJ-Www}`.
+
+- **Anzeige:** Das Feld eines Tages zeigt die **gesamte erfasste Arbeitszeit** des Tages = Summe aller aktiven, nicht
+  gelöschten, abgeschlossenen Einträge (Timer, manuell, Import, bestätigter Stundenplan), auf Minuten gerundet. Ein
+  **laufender Timer** gehört nicht zum Feld (die Zeile zeigt „Timer läuft (+h:mm)“); erst nach dem Stopp zählt sein
+  Eintrag wie jeder andere – sonst hinge der gespeicherte Wert vom Zeitpunkt der Übertragung ab. „Krank (Teil)“ (KR)
+  ist keine Arbeit und zählt hier nicht. Die Klassenfahrt-Kappung und die
+  Krank-Gutschrift wirken erst im Konto (Wochenzeile „Woche … von … (Soll) · Saldo“), nicht im Feld.
+- **Eingabe:** `7` und `7,5` / `7.5` (Dezimalstunden), `7:30`, `7h30`; **zwei Ziffern nach Komma oder Punkt sind
+  Minuten** (`7,30` / `7.30` / `7 30` = 7:30, `7,45` = 7:45 – so schreiben viele „7.30 Uhr“, und auf dem
+  iPhone-Ziffernblock gibt es nur das Komma), ausgenommen `,25` und `,50` (Viertelstunden als Dezimalzahl: 7:15 /
+  7:30) und Werte über 59 (`7,75` = 7:45). Die Zeile zeigt nach dem Speichern, wie die Eingabe gelesen wurde
+  („7,25 = 7:15 h“). `730` wird abgelehnt mit „Meintest du 7:30?“. Auf ganze Minuten gerundet, höchstens die Länge
+  des Tages (24 h, an den Umstellungstagen 23 h bzw. 25 h); leer oder `0` = nichts erfasst. Eine Eingabe setzt die **Tagessumme**: Die App führt je Tag genau einen Eintrag
+  *ohne Zeitgrenzen* (Quelle *manuell*, Kategorie **AZ – Arbeitszeit (pauschal, nicht aufgeschlüsselt)**, kein
+  Unterricht) mit `Dauer = Eingabe − Summe aller anderen Einträge des Tages`.
+  - Verglichen wird in ganzen Minuten wie angezeigt: Wer durch einen Tag mit sekundengenauen Timer-Einträgen nur
+    „durchtippt“, ändert nichts (kein Mini-Eintrag, kein Fehler).
+  - Eingabe kleiner als die einzeln erfassten Einträge → abgelehnt („Für diesen Tag sind bereits X h einzeln
+    erfasst – bitte mindestens X eingeben“); die Einzeleinträge werden nie angefasst.
+  - Eingabe gleich den Einzeleinträgen, `0` oder leer → der Tagessummen-Eintrag wird gelöscht (ausgeblendet, mit
+    Revision).
+  - Gleicher Wert noch einmal → keine Änderung, keine Revision (die Offline-Warteschlange darf wiederholen).
+    Schreibvorgänge werden serialisiert, zwei gleichzeitige Anfragen (z. B. zwei offene Tabs) ergeben nie zwei
+    Tagessummen.
+  - **Zeitpunkt der Eingabe:** Das Gerät schickt die Uhrzeit der Eingabe mit (bis 5 min in der Zukunft, höchstens
+    14 Tage alt, sonst gilt die Serverzeit). Sie zählt für die 48-h-Regel – offline rechtzeitig eingetragen bleibt
+    rechtzeitig. Kommt ein zwischengespeicherter Wert erst später an und ist er älter als die letzte Änderung der
+    Tagessumme (z. B. inzwischen am Laptop geändert), wird er verworfen („veraltet“): Es gilt die zuletzt
+    *eingegebene*, nicht die zuletzt übertragene Zahl.
+  - **Später hinzugekommene Einzeleinträge** (gestoppter Timer, bestätigter Stundenplan, Import, *Einträge → Neu*)
+    zählen zusätzlich: 8 h eingetragen, danach 5 h Stundenplan bestätigt → 13 h. Die App ändert die Tagessumme dann
+    **nicht stillschweigend**, sondern fragt in der Zeile einmal nach: „Auf 8:00 zurück“ (die Tagessumme schrumpft
+    auf den Rest bzw. entfällt) oder „13:00 stimmt“ (bestätigt, ohne Revision; die Frage verschwindet).
+  - Gibt es mehrere passende AZ-Einträge ohne Zeitgrenzen (z. B. von Hand angelegt), ist der neueste die Tagessumme,
+    die anderen zählen als Einzeleinträge.
+- **Beweiskraft:** Eine Tagessumme ist bewusst als pauschal gekennzeichnet (Kategorie AZ, *ohne Zeitgrenzen*, keine
+  Uhrzeiten) und hat damit **geringere Beweiskraft** als Einträge mit Von–Bis. Alle übrigen Regeln gelten unverändert:
+  Revisionen bei jeder Änderung, *nachträglich* bei Anlage **oder Änderung des Werts** mehr als 48 h nach Tagesende
+  (§7; sonst ließe sich ein früh angelegter Wert später unbemerkt ändern), abgeschlossene Monate
+  nur mit Begründung (im UI schreibgeschützt; Korrektur über *Einträge*), Prüf-Hash wie jeder andere Eintrag.
+  Kategorie-Statistiken weisen AZ als eigene Kategorie aus; der Unterrichtsanteil sinkt entsprechend.
+- **Wochenzeile:** „Woche“ ist die Konto-Ist-Zeit (inkl. Krank-Gutschrift), „Saldo bis gestern/heute“ zählt den
+  heutigen Tag erst, sobald für ihn etwas erfasst ist (kein rotes −8:00 am Morgen). In einer Woche über eine
+  Periodengrenze (z. B. 31.07.–06.08.) kommen Soll und Tagestyp jedes Tages aus seiner eigenen Periode. Solange ein
+  Wert noch in der Warteschlange liegt, rechnet die Seite die Summen vorläufig auf dem Gerät („vorläufig“).
+  Das Kennzeichen *nachträglich* steht in Einträgen, Export und Bericht, aber nicht als Plakette auf *Erfassen*
+  (wer einmal pro Woche einträgt, soll nicht jede Zeile gerügt sehen).
+- **Tagestypen:** An Urlaubs-, Feiertags- und Wochenendtagen funktioniert das Feld normal (Arbeit zählt). An ganzen
+  Krankheitstagen (mit *Krankheit neutralisiert das Soll*) zeigt die Zeile „krank – zählt wie Soll“; erfasste Arbeit
+  zählt zusätzlich (§4). Tage vor *Erfassung ab* sind neutral. Künftige Tage sind erlaubt.
+- **Entscheidung:** Die Kategorie der Tagessumme ist fest AZ und nicht einstellbar: Nur so bleibt eindeutig, welcher
+  Eintrag die Tagessumme ist, und eine Tagessumme wird nie mit echten, kategorisierten Einträgen vermischt. AZ kann
+  umbenannt und umgefärbt, aber weder deaktiviert noch mit Notiz-Pflicht versehen werden (sonst wäre die Startseite
+  unbenutzbar).
+- **Einrichtung:** Wird ein Schuljahr mitten im Jahr angelegt und gibt es davor noch keine Einträge, setzt die App
+  *Erfassung ab* auf heute (änderbar im letzten Einrichtungsschritt) – sonst stünde das Konto eines neuen Nutzers
+  sofort bei z. B. −288 h. „Fertig“ im Einrichtungsassistenten speichert das angezeigte Datum und führt zu *Erfassen*.
 
 ## 5. Konto (`app/core/account.py`)
 

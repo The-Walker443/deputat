@@ -58,6 +58,11 @@ class CategorySeed:
     is_pseudo: bool = False
 
 
+# Category for day totals ("Tagessumme", screen "Erfassen"); code is stable, also used by migration 0005.
+TAGESSUMME_CODE = "AZ"
+TAGESSUMME_NAME = "Arbeitszeit (pauschal, nicht aufgeschlüsselt)"
+TAGESSUMME_COLOR = "#57534E"
+
 # Colors: distinct hues, all >= 4.5:1 contrast against white (usable as text and dots).
 CATEGORY_CATALOGUE: tuple[CategorySeed, ...] = (
     CategorySeed("U", "Unterricht", "#2563EB",
@@ -93,6 +98,9 @@ CATEGORY_CATALOGUE: tuple[CategorySeed, ...] = (
     CategorySeed("S", "Sonstiges", "#475569", requires_note=True),
     # Pseudo category for partial sick days: neutralizes soll only, excluded from statistics.
     CategorySeed("KR", "Krank (Teil)", "#94A3B8", is_pseudo=True),
+    # Day totals from the "Erfassen" screen (app/services/quick_entry.py): work recorded as one duration per
+    # day without a breakdown. Appended last so existing databases (migration 0005) get the same sort.
+    CategorySeed(TAGESSUMME_CODE, TAGESSUMME_NAME, TAGESSUMME_COLOR),
 )
 
 MAIN_CATEGORY_CODES = tuple(c.code for c in CATEGORY_CATALOGUE if not c.is_pseudo)

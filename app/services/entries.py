@@ -847,12 +847,16 @@ def update_entry(
     reason: str | None = None,
     now: datetime | None = None,
     commit: bool = True,
+    recorded_now: bool = False,
 ) -> list[TimeEntry]:
     """Apply ``changes`` (same keys as :func:`create_entry`, partial); returns ``[entry, *new split parts]``.
 
     Appends a revision with the full previous state if anything changed. Bounds: a changed ``start_at`` keeps
     ``end_at``; ``duration_seconds`` without ``end_at`` sets ``end_at = start_at + duration``; switching to
     ``has_bounds=False`` needs ``day`` (or keeps the entry's day) and a duration.
+
+    ``recorded_now``: the change records the day's value *now* (day totals of the "Erfassen" screen), so the
+    48-h rule is also checked against ``now`` – like a move to another day.
     """
     entry = get_entry(db, entry_id)
     if entry.deleted_at is not None:
@@ -947,7 +951,7 @@ def update_entry(
 
     def flags_for(day: date, created_at: datetime) -> list[str]:
         flags = set(user_flags) | sticky | _derived_flags(db, day, times.has_bounds)
-        if is_nachtraeglich(day, created_at) or (moved_day and is_nachtraeglich(day, now)):
+        if is_nachtraeglich(day, created_at) or ((moved_day or recorded_now) and is_nachtraeglich(day, now)):
             flags.add(FLAG_NACHTRAEGLICH)
         return _ordered_flags(flags)
 

@@ -1,6 +1,6 @@
 """HTML – app-shell pages owned by the scaffold (not by a feature step):
 
-- ``GET /``        -> redirect to /heute
+- ``GET /``        -> redirect to /erfassen (home: day totals of the week; the timer lives on /heute)
 - ``GET /mehr``    -> menu of secondary screens (tab "Mehr")
 - ``GET /offline`` -> offline fallback page cached by the service worker
 
@@ -19,7 +19,7 @@ public_router = APIRouter()
 
 @router.get("/", include_in_schema=False)
 def index() -> RedirectResponse:
-    return RedirectResponse("/heute", status_code=303)
+    return RedirectResponse("/erfassen", status_code=303)
 
 
 @router.get("/mehr", response_class=HTMLResponse)

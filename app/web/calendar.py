@@ -475,9 +475,39 @@ async def create_period(request: Request, db: Session = Depends(get_db)) -> Redi
                        f"Stand {catalog.retrieved_de}).", "success")
     elif catalog.hint:
         flash(request, catalog.hint, "warn")
+    start = _default_recording_start(db, period)
+    if start is not None:
+        flash(request, f"Erfassung ab heute ({cal.fmt_date_de(start)}): die Tage davor zählen neutral, das Konto "
+                       "startet bei 0. Änderbar im letzten Einrichtungsschritt.", "info")
     if wizard:
         return _redirect(f"/kalender/einrichtung?periode={period.id}&schritt=2")
     return _redirect(f"/kalender?periode={period.id}")
+
+
+def _default_recording_start(db: Session, period: Period) -> date | None:
+    """A school year created mid-year starts the recording today ("Erfassung ab"), unless set already or work
+    was recorded (imported) before today: otherwise every earlier school day would count as 0 hours and a new
+    user's account would start deep in the minus (e.g. -288 h in November)."""
+    today = today_local()
+    if not period.start < today <= period.end:
+        return None
+    try:
+        if settings_svc.get_settings(db).erfassung_ab is not None:
+            return None
+        earlier = db.scalar(
+            select(func.count()).select_from(TimeEntry).where(
+                TimeEntry.day >= period.start, TimeEntry.day < today, TimeEntry.deleted_at.is_(None),
+                TimeEntry.status == EntryStatus.ACTIVE.value,
+            )
+        )
+        if earlier:
+            return None
+        settings_svc.update_settings(db, erfassung_ab=today)
+    except Exception:  # a convenience default must never break creating the period
+        log.exception("Erfassung ab konnte nicht vorbelegt werden")
+        db.rollback()
+        return None
+    return today
 
 
 @router.post("/kalender/perioden/{period_id}/loeschen", include_in_schema=False)
@@ -844,7 +874,8 @@ async def save_regional_holidays(request: Request, db: Session = Depends(get_db)
 async def save_recording_start(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     """Wizard shortcut for ``settings.erfassung_ab`` (days before it are neutral in the account)."""
     form = await request.form()
-    target = _safe_next(form.get("next"))
+    finish = form.get("fertig") == "1"  # wizard button "Fertig": save the field as shown, then go recording
+    target = "/erfassen" if finish else _safe_next(form.get("next"))
     raw = str(form.get("erfassung_ab") or "").strip()
     value = _parse_date(raw) if raw else None
     if raw and value is None:
@@ -859,7 +890,9 @@ async def save_recording_start(request: Request, db: Session = Depends(get_db)) 
     except cal.CalendarLocked as exc:
         flash(request, f"{exc} Bitte unter Einstellungen → Arbeitszeitkonto mit Begründung ändern.", "danger")
         return _redirect(target)
-    if value is None:
+    if finish:
+        flash(request, "Einrichtung fertig – trag einfach die Stunden pro Tag ein.", "success")
+    elif value is None:
         flash(request, "Erfassung ab Periodenbeginn gespeichert.", "success")
     else:
         flash(request, f"Erfassung ab {cal.fmt_date_de(value)} gespeichert – frühere Tage zählen neutral.", "success")

@@ -17,10 +17,15 @@
       <input id="cc-{{ c.id }}" name="color" type="color" value="{{ c.color|lower }}">
     </div>
   </div>
+  {% if c.code == "AZ" and not c.parent_id %}
+  <input type="hidden" name="active" value="1">
+  <p class="field-hint">Nimmt die Stunden vom Startbildschirm „Erfassen“ auf – bleibt immer aktiv, ohne Notiz-Pflicht.</p>
+  {% else %}
   <label class="admin-check-row"><input type="checkbox" name="active" value="1"{% if c.active %} checked{% endif %}>
     <span class="admin-check-text"><span class="admin-check-label">aktiv</span>
       <span class="field-hint">Inaktive Kategorien verschwinden aus der Auswahl, bleiben aber in bestehenden Einträgen und Berichten.</span></span></label>
-  {% if not c.is_pseudo %}
+  {% endif %}
+  {% if not c.is_pseudo and not (c.code == "AZ" and not c.parent_id) %}
   <label class="admin-check-row"><input type="checkbox" name="requires_note" value="1"{% if c.requires_note %} checked{% endif %}>
     <span class="admin-check-text"><span class="admin-check-label">Notiz Pflicht</span></span></label>
   {% endif %}

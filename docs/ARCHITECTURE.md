@@ -166,8 +166,18 @@ richten sich danach.
 
 ## UI
 
-Mobile first, untere Tab-Leiste: Heute · Woche · Konto · Jahr · Mehr (Einträge, Kalender, Stundenplan,
-Monate/Berichte, Import, Schreiben, Einstellungen). Dark-Mode via `prefers-color-scheme`. Kein Build-Step.
+Mobile first, untere Tab-Leiste: Erfassen · Timer · Konto · Jahr · Mehr (Woche/Raster, Einträge, Kalender,
+Stundenplan, Monate/Berichte, Import, Schreiben, Einstellungen). Dark-Mode via `prefers-color-scheme`. Kein Build-Step.
+
+- **Erfassen** (Startseite, `/` → `/erfassen`, PWA-`start_url`): `app/web/erfassen.py` + `partials/erfassen_week.html`
+  + `static/js/erfassen.js`; Fachlogik `app/services/quick_entry.py` (Tagessumme, siehe RECHENREGELN §4a), JSON-API
+  `app/api/quick_entry.py` (`PUT /api/days/{date}/total`, `GET /api/weeks/{ref}`). Schreiben läuft über die
+  Offline-Queue (`offline-queue.js`: Items mit `method`, `coalesce`, `discardOnConflict`), Wochenwechsel lädt nur den
+  Wochenblock (Header `X-Erfassen-Partial: 1`). Der PUT trägt die Gerätezeit der Eingabe (`at`); Schreibzugriffe
+  auf Tagessummen sind prozessweit serialisiert (ein uvicorn-Prozess). Vor einem Linkwechsel wartet die Seite kurz,
+  bis die gerade eingegebenen Werte beim Server sind; nach einem Netzfehler versucht die Queue es nach 5/10/20/30 s
+  erneut (`deputatQueue.unreachable`).
+- **Timer** = bisheriger Screen „Heute“ unter `/heute` (unverändert; die Kategorie AZ ist kein Timer-Chip).
 
 ## Änderungen nach Abstimmung mit Betrieb (verbindlich, ersetzt Auth-Teile oben)
 
@@ -190,6 +200,9 @@ Siehe `DEPLOY.md`. Kurz:
 - Migration 0004: `settings.erfassung_ab` (Date, null). Tage davor sind im Ledger neutral
   (`DayLedger.vor_erfassung`, Ist = Soll; `core.account.build_ledger(..., erfassung_ab)`), nicht in Prognose,
   Ferienarbeits-Historie, offenen Tagen und Monats-Offenpunkten; EU-Fenster ab `max(Datenbeginn, erfassung_ab)`.
+- Migration 0005 (nur Daten): Hauptkategorie `AZ` („Arbeitszeit (pauschal, nicht aufgeschlüsselt)“, sort 150) für
+  bestehende Datenbanken; frische Datenbanken bekommen sie über den Seed. JSON-Backups von 0004 lassen sich in 0005
+  einspielen (`export.DATA_ONLY_UPGRADES`, der Seed nach dem Restore ergänzt AZ).
 - Übertrag: `LedgerContext.uebertrag` (Schluss-Saldo der letzten Vorperiode mit Daten), `uebertrag_verrechnet`
   (nur mit `settings.uebertrag_verrechnen`): Saldo, Serie, Prognose, Ferienrechner, Monats-`saldo_end` verschoben;
   Verbraucher nutzen `ctx.saldo_at(d)` statt `core.account.saldo_at(ctx.ledger, d)`.
@@ -199,4 +212,4 @@ Siehe `DEPLOY.md`. Kurz:
 - Laufender Timer belegt nur die verstrichene Zeit (`[start, max(now, start+1s))`): spätere Einträge blockieren den
   Start nicht; Stop/Pause/Wechsel kappen am nächsten Eintrag (`entries.next_entry_start`, Hinweis in `notices`).
 - Tagesbestätigung im UI: `app/web/days.py` (`/tage`, `/tag/{date}`), ruft `timetable.confirm_day` mit Abweichungen;
-  `/heute` und `/tag/{date}` erzeugen fehlende Vorschläge beim ersten Öffnen (Konzept §7.2).
+  `/erfassen`, `/heute` und `/tag/{date}` erzeugen fehlende Vorschläge beim ersten Öffnen (Konzept §7.2).

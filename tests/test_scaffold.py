@@ -24,10 +24,10 @@ def test_healthz_ok(client):
     assert res.json() == {"status": "ok"}
 
 
-def test_root_redirects_to_today_and_today_renders(client):
+def test_root_redirects_to_erfassen_and_today_renders(client):
     res = client.get("/", follow_redirects=False)
     assert res.status_code == 303
-    assert res.headers["location"] == "/heute"
+    assert res.headers["location"] == "/erfassen"
 
     res = client.get("/heute")
     assert res.status_code == 200
@@ -49,7 +49,7 @@ def test_pwa_files_served_from_root(client):
     assert sw.headers["service-worker-allowed"] == "/"
     manifest = client.get("/manifest.webmanifest")
     assert manifest.status_code == 200
-    assert manifest.json()["start_url"] == "/heute"
+    assert manifest.json()["start_url"] == "/erfassen"
     assert client.get("/static/css/app.css").status_code == 200
 
 
@@ -75,13 +75,18 @@ def test_categories_present(db):
     mains = db.scalars(select(Category).where(Category.parent_id.is_(None))).all()
     codes = {c.code for c in mains}
     assert set(MAIN_CATEGORY_CODES) <= codes
-    assert len(MAIN_CATEGORY_CODES) == 13
+    assert len(MAIN_CATEGORY_CODES) == 14  # 13 of the catalogue + AZ (day totals, screen "Erfassen")
     assert codes == set(MAIN_CATEGORY_CODES) | {"KR"}
+    assert "AZ" in MAIN_CATEGORY_CODES
 
     by_code = {c.code: c for c in mains}
     assert by_code["U"].is_unterricht and by_code["U"].counts_as_mehrarbeit_candidate
     assert by_code["S"].requires_note
     assert by_code["KR"].is_pseudo and by_code["KR"].name == "Krank (Teil)"
+    az = by_code["AZ"]
+    assert az.name == "Arbeitszeit (pauschal, nicht aufgeschlüsselt)"
+    assert not (az.is_unterricht or az.is_pseudo or az.requires_note or az.counts_as_mehrarbeit_candidate)
+    assert az.sort == 150 and not az.children
     assert len({c.color.lower() for c in mains}) == len(mains), "category colors must be distinct"
 
     u_children = {c.name for c in by_code["U"].children}

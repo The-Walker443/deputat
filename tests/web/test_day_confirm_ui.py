@@ -107,7 +107,8 @@ def test_confirm_in_closed_month_needs_reason(client, db, setup):
 
 
 def test_links_to_the_day_page(client, db, setup):
-    week = client.get(f"/woche?datum={setup.isoformat()}").text
+    iso = setup.isocalendar()
+    week = client.get(f"/woche/{iso[0]}-W{iso[1]:02d}").text  # the week of that Tuesday, not the current one
     assert f'/tag/{setup.isoformat()}?next=' in week
     assert f'/kalender/tag/{setup.isoformat()}' in week
     heute = client.get("/heute").text

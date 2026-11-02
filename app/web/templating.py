@@ -40,9 +40,10 @@ MONTHS = (
 )
 
 # Bottom tab bar. ``match`` lists path prefixes that mark the tab active.
+# "Erfassen" (home, day totals) is first; the week grid /woche is its detail view and is listed under Mehr.
 NAV_ITEMS = (
-    {"href": "/heute", "label": "Heute", "icon": "clock", "match": ("/heute",)},
-    {"href": "/woche", "label": "Woche", "icon": "week", "match": ("/woche",)},
+    {"href": "/erfassen", "label": "Erfassen", "icon": "edit", "match": ("/erfassen", "/woche")},
+    {"href": "/heute", "label": "Timer", "icon": "clock", "match": ("/heute",)},
     {"href": "/konto", "label": "Konto", "icon": "chart", "match": ("/konto",)},
     {"href": "/jahr", "label": "Jahr", "icon": "calendar", "match": ("/jahr",)},
     {
@@ -56,6 +57,7 @@ NAV_ITEMS = (
 
 # Secondary screens listed on /mehr.
 MORE_ITEMS = (
+    {"href": "/woche", "label": "Woche (Raster)", "icon": "week", "hint": "Einträge der Woche als Zeitblöcke, W_max"},
     {"href": "/eintraege", "label": "Einträge", "icon": "list", "hint": "Alle Zeiteinträge, Historie, Bearbeiten"},
     {"href": "/kalender", "label": "Kalender", "icon": "calendar", "hint": "Ferien, Feiertage, Urlaub, Abwesenheiten"},
     {"href": "/stundenplan", "label": "Stundenplan", "icon": "grid", "hint": "Wochenraster und Vorschläge"},

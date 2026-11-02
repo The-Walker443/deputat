@@ -76,7 +76,7 @@ def test_pages_and_api_open_without_login(make_client):
         res = client.get("/heute", follow_redirects=False)
         assert res.status_code == 200
         assert client.get("/mehr").status_code == 200
-        assert client.get("/", follow_redirects=False).headers["location"] == "/heute"
+        assert client.get("/", follow_redirects=False).headers["location"] == "/erfassen"
 
 
 @pytest.mark.parametrize("path", ["/login", "/setup", "/api/auth/status"])

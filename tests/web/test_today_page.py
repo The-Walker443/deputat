@@ -161,6 +161,7 @@ def test_chips_recently_used_first(client):
     rest = codes[2:]
     assert rest[:3] == ["U", "VN", "K"]  # catalogue order for unused categories
     assert "KR" not in codes  # pseudo category is no timer chip
+    assert "AZ" not in codes  # day totals belong to "Erfassen", a timer always records a real category
     assert len(codes) == 13
 
 
@@ -209,7 +210,8 @@ def test_shortcut_param_is_passed_to_js(client):
 def test_pwa_files(client):
     sw = client.get("/sw.js")
     assert sw.status_code == 200
-    for needle in ('"/heute"', "/static/js/timer.js", "/static/js/offline-queue.js", "skipWaiting", "clients.claim"):
+    for needle in ('"/heute"', '"/erfassen"', "/static/js/timer.js", "/static/js/offline-queue.js",
+                   "/static/js/erfassen.js", "/static/css/erfassen.css", "skipWaiting", "clients.claim"):
         assert needle in sw.text
     manifest = client.get("/manifest.webmanifest").json()
     names = {s["name"]: s["url"] for s in manifest["shortcuts"]}
@@ -217,7 +219,8 @@ def test_pwa_files(client):
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-@pytest.mark.parametrize("rel", ["app/static/js/timer.js", "app/static/js/offline-queue.js", "app/static/sw.js"])
+@pytest.mark.parametrize("rel", ["app/static/js/timer.js", "app/static/js/offline-queue.js", "app/static/sw.js",
+                                 "app/static/js/erfassen.js"])
 def test_js_syntax(rel):
     result = subprocess.run(["node", "--check", str(ROOT / rel)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

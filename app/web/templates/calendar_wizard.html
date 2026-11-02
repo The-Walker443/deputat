@@ -209,7 +209,7 @@
     <p class="admin-help">Das Konto beginnt am {{ period.start|date_de }}. Fängst du erst mitten im Schuljahr an,
       würde jeder frühere Schultag als „0 Stunden gearbeitet“ zählen und das Konto stark ins Minus ziehen.
       Mit „Erfassung ab“ zählen die Tage davor neutral (Ist = Soll).</p>
-    <form method="post" action="/kalender/erfassung-ab" class="stack-sm">
+    <form method="post" action="/kalender/erfassung-ab" class="stack-sm" id="w4-erfassung-form">
       {{ cm.csrf(request) }}
       <input type="hidden" name="next" value="{{ wizard_url }}&schritt=4">
       <div class="field">
@@ -233,9 +233,12 @@
     {{ cm.compare_card(compare) }}
   </section>
 
+  <p class="admin-help">Teilzeit? Das Soll rechnet mit vollem Deputat, bis du unter
+    <a href="/einstellungen#upz">Einstellungen → Unterrichtspflichtzeit</a> deine tatsächlichen Stunden einträgst.</p>
+
   <div class="wizard-nav">
     <a class="btn btn-ghost" href="{{ wizard_url }}&amp;schritt=3">{{ icon("chevron-left", 18) }} Zurück</a>
-    <a class="btn btn-primary" href="/kalender?periode={{ period.id }}">{{ icon("check", 18) }} Fertig – zum Kalender</a>
+    <button type="submit" class="btn btn-primary" form="w4-erfassung-form" name="fertig" value="1">{{ icon("check", 18) }} Fertig – Stunden erfassen</button>
   </div>
   {% endif %}
 </div>

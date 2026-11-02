@@ -11,6 +11,8 @@ Rules
   Inactive categories disappear from pickers but stay valid for existing entries and reports.
 - Names are unique among siblings (case-insensitive).
 - The pseudo category ``KR`` (partial sick day) can be renamed/recolored but gets no subcategories.
+- The main category ``AZ`` (day totals of the "Erfassen" screen, ``app.services.quick_entry``) can be
+  renamed/recolored but neither deactivated nor given a mandatory note: the home screen depends on it.
 
 Errors: :class:`CategoryError` (``ValueError``, German message for the UI) and
 :class:`CategoryNotFound` (``LookupError``). Every mutating function commits.
@@ -26,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Category, TimeEntry
+from app.db.seed import TAGESSUMME_CODE
 
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 MAX_NAME_LEN = 100
@@ -157,12 +160,24 @@ def update_category(
             cat.name = clean
     if color is not None:
         cat.color = _clean_color(color)
+    protected = is_tagessumme_category(cat)
     if active is not None:
+        if protected and not active:
+            raise CategoryError(f"„{cat.name}“ nimmt die Stunden vom Startbildschirm „Erfassen“ auf und kann "
+                                "nicht deaktiviert werden.")
         cat.active = bool(active)
     if requires_note is not None:
+        if protected and requires_note:
+            raise CategoryError(f"Für „{cat.name}“ kann keine Notiz Pflicht sein – sonst ginge die schnelle "
+                                "Erfassung auf dem Startbildschirm nicht mehr.")
         cat.requires_note = bool(requires_note)
     db.commit()
     return cat
+
+
+def is_tagessumme_category(cat: Category) -> bool:
+    """The main category of the day totals ("Erfassen"): always active, never a mandatory note."""
+    return cat.code == TAGESSUMME_CODE and cat.parent_id is None
 
 
 def _next_sub_code(db: Session, parent: Category) -> str:

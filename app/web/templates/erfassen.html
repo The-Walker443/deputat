@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{# Home screen "Erfassen" (app/web/erfassen.py): one duration field per weekday. Saving, week switching
+   (arrows, swipe, arrow keys) and the offline handling live in static/js/erfassen.js; the queue is
+   static/js/offline-queue.js (shared with the timer). #}
+{% block head_scripts %}
+  <link rel="stylesheet" href="{{ static_url('css/erfassen.css') }}">
+  <script src="{{ static_url('js/offline-queue.js') }}" defer></script>
+  <script src="{{ static_url('js/erfassen.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="qe-root" data-qe-root>
+  {% include "partials/erfassen_week.html" %}
+</div>
+{% endblock %}

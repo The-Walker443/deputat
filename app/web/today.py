@@ -217,10 +217,15 @@ def _kpis(db: Session, today: date, *, now: datetime | None = None) -> Kpis:
 
 
 def _main_categories(db: Session) -> list[Category]:
+    """Timer chips: active main categories without the pseudo category and without AZ (day totals are
+    recorded on the "Erfassen" screen; a timer always records a real category)."""
+    from app.db.seed import TAGESSUMME_CODE
+
     return list(
         db.scalars(
             select(Category)
-            .where(Category.parent_id.is_(None), Category.active.is_(True), Category.is_pseudo.is_(False))
+            .where(Category.parent_id.is_(None), Category.active.is_(True), Category.is_pseudo.is_(False),
+                   Category.code != TAGESSUMME_CODE)
             .order_by(Category.sort, Category.code)
         )
     )
@@ -392,7 +397,7 @@ def today_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     _ensure_today_suggestions(db, today)
     klassen, faecher = _settings_lists(db)
     ctx = {
-        "page_title": "Heute",
+        "page_title": "Timer",
         "today": today,
         "kpis": _kpis(db, today, now=now),
         "chips": _chips(db, now),

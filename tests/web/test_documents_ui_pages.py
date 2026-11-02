@@ -214,7 +214,8 @@ def test_hinweise_school_day_without_entries(client):
     r = client.get("/hinweise?seite=/heute")
     if is_school:
         assert f"tag-ohne-eintrag:{day.isoformat()}" in r.text
-        assert f"/eintraege/neu?datum={day.isoformat()}" in r.text
+        iso = day.isocalendar()
+        assert f"/erfassen/{iso[0]}-W{iso[1]:02d}?tag={day.isoformat()}" in r.text
 
 
 # --------------------------------------------------------------------------- JSON API

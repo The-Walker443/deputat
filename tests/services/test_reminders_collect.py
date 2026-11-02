@@ -83,7 +83,7 @@ def test_school_day_without_entries(db, year, backed_up):
     hint = by_prefix(reminders.collect(db, NOW), "tag-ohne-eintrag")
     assert hint["key"] == "tag-ohne-eintrag:2026-10-13"
     assert "gestern" in hint["text"]
-    assert hint["link"] == "/eintraege/neu?datum=2026-10-13"
+    assert hint["link"] == "/erfassen/2026-W42?tag=2026-10-13"
     # Monday: reminds of Friday
     monday = local_to_utc(date(2026, 10, 19), time(9))
     add(db, date(2026, 10, 13))

@@ -106,8 +106,9 @@ def test_confirm_with_deviations_and_extra(client, setup):
     result = r.json()["result"]
     assert len(result["verworfen"]) == 1
     flags = sorted(f for e in result["active"] for f in e["flags"])
-    assert flags == ["vertretung_angeordnet", "vertretung_genehmigt"]
-    assert result["extra"][0]["flags"] == ["vertretung_angeordnet"]
+    # "nachtraeglich" depends on the real clock (the recent school day may lie more than 48 h back)
+    assert [f for f in flags if f != "nachtraeglich"] == ["vertretung_angeordnet", "vertretung_genehmigt"]
+    assert [f for f in result["extra"][0]["flags"] if f != "nachtraeglich"] == ["vertretung_angeordnet"]
     view = r.json()["day"]
     assert view["ist"] == 3 * 45 * 60 and len(view["verworfen"]) == 1
     items = view["confirmation"]["deviations"]["items"]

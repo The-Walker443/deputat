@@ -234,6 +234,11 @@ def export_csv(
 # =========================================================================== JSON backup
 
 
+# Migrations that changed data only (no schema): a backup taken at the older revision restores unchanged, the
+# seed after the restore adds what the data migration adds (0005: category AZ for the "Erfassen" day totals).
+DATA_ONLY_UPGRADES: dict[str, frozenset[str]] = {"0005": frozenset({"0004"})}
+
+
 def schema_revision(db: Session) -> str | None:
     """Current Alembic revision of the database (``None`` if unknown)."""
     try:
@@ -335,7 +340,8 @@ def validate_backup(db: Session, data: Any) -> dict[str, list[dict[str, Any]]]:
     if data.get("format_version") != BACKUP_FORMAT_VERSION:
         raise ExportError(f"Nicht unterstützte Format-Version: {data.get('format_version')!r}.")
     current = schema_revision(db)
-    if current is not None and data.get("schema_revision") != current:
+    revision = data.get("schema_revision")
+    if current is not None and revision != current and revision not in DATA_ONLY_UPGRADES.get(current, ()):
         raise ExportError(
             f"Die Sicherung hat Schema-Version {data.get('schema_revision')!r}, die Datenbank {current!r}. "
             "Bitte mit der passenden App-Version wiederherstellen."
