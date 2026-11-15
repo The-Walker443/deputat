@@ -171,7 +171,10 @@ Stundenplan, Monate/Berichte, Import, Schreiben, Einstellungen). Dark-Mode via `
 
 - **Erfassen** (Startseite, `/` → `/erfassen`, PWA-`start_url`): `app/web/erfassen.py` + `partials/erfassen_week.html`
   + `static/js/erfassen.js`; Fachlogik `app/services/quick_entry.py` (Tagessumme, siehe RECHENREGELN §4a), JSON-API
-  `app/api/quick_entry.py` (`PUT /api/days/{date}/total`, `GET /api/weeks/{ref}`). Schreiben läuft über die
+  `app/api/quick_entry.py` (`PUT /api/days/{date}/total`, `PUT /api/days/{date}/typ`, `GET /api/weeks/{ref}`).
+  Tagestyp-Chip je Zeile öffnet ein gemeinsames `<dialog data-qe-sheet>` in `erfassen.html` (Optionen aus
+  `erfassen.typ_choices`); Typwechsel laufen wie die Stunden über die Offline-Queue (Item-Typ `day_typ`, coalesce
+  `day_typ:<date>`). Schreiben läuft über die
   Offline-Queue (`offline-queue.js`: Items mit `method`, `coalesce`, `discardOnConflict`), Wochenwechsel lädt nur den
   Wochenblock (Header `X-Erfassen-Partial: 1`). Der PUT trägt die Gerätezeit der Eingabe (`at`); Schreibzugriffe
   auf Tagessummen sind prozessweit serialisiert (ein uvicorn-Prozess). Vor einem Linkwechsel wartet die Seite kurz,
@@ -203,6 +206,22 @@ Siehe `DEPLOY.md`. Kurz:
 - Migration 0005 (nur Daten): Hauptkategorie `AZ` („Arbeitszeit (pauschal, nicht aufgeschlüsselt)“, sort 150) für
   bestehende Datenbanken; frische Datenbanken bekommen sie über den Seed. JSON-Backups von 0004 lassen sich in 0005
   einspielen (`export.DATA_ONLY_UPGRADES`, der Seed nach dem Restore ergänzt AZ).
+- Migration 0006: `time_entry.tagessumme` (Bool, Default 0) kennzeichnet die Tagessumme von *Erfassen* – bewusst
+  Spalte statt Flag, weil `flags` Hash-Feld ist; die Migration kennzeichnet je Tag den neuesten Eintrag nach der
+  alten Regel (AZ, ohne Unterkategorie, ohne Zeitgrenzen, manuell, aktiv). `day_override.erfassung_typ`
+  ('klassenfahrt' | 'schulveranstaltung' | NULL) und `erfassung_typ_at` (Gerätezeit des letzten Typwechsels):
+  Tagestyp ohne Kalenderwirkung; Krank/Fortbildung bleiben `absence_type`. Eine Zeile nur mit `erfassung_typ` ist
+  keine Kalendereingabe (`calendar_service.has_calendar_input`): `delete_override`/leere `set_override` behalten sie.
+  Nach jeder Override-Änderung gleicht `quick_entry.sync_tagessumme_types` die Kategorie vorhandener Tagessummen an
+  (F bei Fortbildung; nur gekennzeichnete). Krank aus dem Kalender entfernt die Tagessumme in derselben Transaktion
+  (`quick_entry.apply_calendar_absences`) und stempelt `erfassung_typ_at`; `set_override`/`set_override_range`/
+  `delete_override`/`adopt_leave_plan` laufen unter `quick_entry._WRITE_LOCK` (RLock, `calendar_service._serialised`).
+  Tage mit `erfassung_typ = 'klassenfahrt'` gehen als `trip_days` in `ledger.split_ist`/`core.klassenfahrt.evaluate_ist`
+  (Fahrtag auch ohne gekennzeichneten Eintrag). Die Offline-Queue schickt `X-Sent-At`; `quick_entry.input_time` misst
+  damit die Wartezeit unabhängig vom Uhrversatz des Geräts.
+  `entries.create_entry/update_entry(..., tagessumme=True)` (nur `quick_entry`): Marker setzen,
+  `active`/Notiz-Pflicht der Kategorie nicht prüfen; jede andere Kategorie-/Zeitgrenzen-Änderung löscht den Marker.
+  JSON-Backups von 0004/0005 sind einspielbar (`export.DATA_ONLY_UPGRADES`), danach `mark_legacy_tagessummen`.
 - Übertrag: `LedgerContext.uebertrag` (Schluss-Saldo der letzten Vorperiode mit Daten), `uebertrag_verrechnet`
   (nur mit `settings.uebertrag_verrechnen`): Saldo, Serie, Prognose, Ferienrechner, Monats-`saldo_end` verschoben;
   Verbraucher nutzen `ctx.saldo_at(d)` statt `core.account.saldo_at(ctx.ledger, d)`.

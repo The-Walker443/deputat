@@ -225,6 +225,12 @@ class DayOverride(Base):
     day_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # DayType, e.g. unterrichtsfrei
     urlaub_manuell: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Day type chosen on the "Erfassen" screen that is no calendar absence (migration 0006):
+    # 'klassenfahrt' | 'schulveranstaltung' | NULL. Krank/Fortbildung live in ``absence_type``.
+    # Not calendar data: it never changes the soll; it only sets the category of the day's Tagessumme.
+    erfassung_typ: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # Device time of the last type change on "Erfassen" (offline queue: last input wins).
+    erfassung_typ_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
 
 
@@ -318,6 +324,9 @@ class TimeEntry(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The day's "Tagessumme" of the "Erfassen" screen (migration 0006). Deliberately a column and not a flag:
+    # flags are hash fields, and marking the existing entries must not change the hash of closed months.
+    tagessumme: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
     category: Mapped[Category] = relationship(foreign_keys=[category_id])
     subcategory: Mapped[Category | None] = relationship(foreign_keys=[subcategory_id])

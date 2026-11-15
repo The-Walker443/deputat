@@ -24,10 +24,17 @@
     {{ icon("alert", 18) }}
     <span class="banner-body">
       {% if fortbildung_seconds %}Fortbildung erfasst: {{ fortbildung_seconds|hm }} h.{% else %}<strong>Noch keine Fortbildungszeit erfasst.</strong>
-      Das Soll bleibt bestehen – ohne Eintrag zählt der Tag mit 0 Stunden.{% endif %}
-      {% if fortbildung_category_id %}<a href="/eintraege/neu?datum={{ day.isoformat() }}&amp;kategorie={{ fortbildung_category_id }}&amp;next=/kalender/tag/{{ day.isoformat() }}">Fortbildungszeit erfassen</a>{% endif %}
+      Das Soll bleibt bestehen – ohne Stunden zählt der Tag mit 0. Auf „Erfassen“ eingetragene Stunden zählen als
+      Fortbildung (F).{% endif %}
+      <a href="{{ erfassen_url }}">Stunden auf „Erfassen“</a>{% if fortbildung_category_id %} · <a href="/eintraege/neu?datum={{ day.isoformat() }}&amp;kategorie={{ fortbildung_category_id }}&amp;next=/kalender/tag/{{ day.isoformat() }}">Eintrag mit Uhrzeit</a>{% endif %}
     </span>
   </div>
+  {% endif %}
+
+  {% if erfassung_typ_label %}
+  <p class="field-hint" data-erfassen-typ>Auf <a href="{{ erfassen_url }}">„Erfassen“</a> als <strong>{{ erfassung_typ_label }}</strong>
+    markiert{% if erfassung_typ == "klassenfahrt" %} – die Stunden zählen als SV, mit der Kappung der Klassenfahrt-Regel{% else %} – die Stunden zählen als SV{% endif %}.
+    Ändern dort über die Art des Tages.</p>
   {% endif %}
 
   <form method="post" action="/kalender/tag/{{ day.isoformat() }}" class="stack-sm">
@@ -62,7 +69,10 @@
         <option value="{{ value }}"{% if override and override.absence_type == value %} selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
-      <span class="field-hint">Krank: Soll bleibt, Konto neutral (Einstellung). Fortbildung: Soll bleibt – die Fortbildungszeit zusätzlich als Eintrag (F) erfassen. Dienstbefreiung, Sonderurlaub, Elternzeit: Soll 0.</span>
+      <span class="field-hint">Krank: Soll bleibt, Konto neutral (Einstellung); der Tag zählt ohne Stunden. Fortbildung: Soll bleibt – die Stunden auf „Erfassen“ eintragen (zählen als F). Dienstbefreiung, Sonderurlaub, Elternzeit: Soll 0.</span>
+      {% if tagessumme_seconds and not (override and override.absence_type == "krank") %}
+      <span class="field-hint text-warn" data-krank-removes>Krank entfernt die auf „Erfassen“ eingetragenen <span class="num">{{ tagessumme_seconds|hm }}</span> h dieses Tages (einzeln erfasste Einträge bleiben).</span>
+      {% endif %}
     </div>
 
     <div class="field">
@@ -81,7 +91,7 @@
     </div>
 
     <div class="form-actions">
-      {% if override %}
+      {% if override and (override.absence_type or override.day_type or override.urlaub_manuell or override.note) %}
       <button type="submit" name="aktion" value="entfernen" class="btn btn-ghost">Eingaben entfernen</button>
       {% endif %}
       <button type="submit" class="btn btn-primary">Speichern</button>

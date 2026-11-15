@@ -209,6 +209,9 @@
           "Content-Type": "application/json",
           Accept: "application/json",
           "X-CSRF-Token": csrfToken(),
+          // device time of sending: with body.at (device time of the input) the server knows how long the item
+          // waited, whatever the device clock's offset (app/services/quick_entry.input_time)
+          "X-Sent-At": new Date().toISOString(),
         },
         body: JSON.stringify(body || {}),
       });

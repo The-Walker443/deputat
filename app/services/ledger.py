@@ -18,6 +18,7 @@ and a stale ``calendar_day`` table can never distort the figures.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -267,8 +268,13 @@ def split_ist(
     cats: dict[int, Category],
     variante: KlassenfahrtVariante | str,
     cap_h: float,
+    trip_days: Iterable[date] = (),
 ) -> tuple[dict[date, int], dict[date, int]]:
-    """(ist_by_day via the Klassenfahrt variant, krank_partial from pseudo entries)."""
+    """(ist_by_day via the Klassenfahrt variant, krank_partial from pseudo entries).
+
+    ``trip_days``: days whose "Erfassen" day type is Klassenfahrt (:func:`klassenfahrt_days`) – capped by
+    variant B like a day with a ``klassenfahrt`` entry, whatever entries the day holds.
+    """
     work: list[tuple[date, int, tuple[str, ...]]] = []
     krank: dict[date, int] = defaultdict(int)
     for e in entries:
@@ -277,7 +283,18 @@ def split_ist(
             krank[e.day] += e.seconds
         else:
             work.append((e.day, e.seconds, e.flags))
-    return evaluate_ist(work, variante, cap_h), dict(krank)
+    return evaluate_ist(work, variante, cap_h, trip_days), dict(krank)
+
+
+def klassenfahrt_days(db: Session, start: date, end: date) -> set[date]:
+    """Days in ``[start, end]`` marked Klassenfahrt on the "Erfassen" screen (``day_override.erfassung_typ``)."""
+    return set(
+        db.scalars(
+            select(DayOverride.date).where(
+                DayOverride.erfassung_typ == "klassenfahrt", DayOverride.date.between(start, end)
+            )
+        )
+    )
 
 
 def _history_periods(db: Session, period: Period) -> list[Period]:
@@ -331,7 +348,8 @@ def load_context(
     cats = _categories(db)
     inputs = cal.load_inputs(db, lo, hi)
     entries = load_entries(db, lo, hi, cats)
-    ist_all, krank_all = split_ist(entries, cats, variante, float(settings.klassenfahrt_cap_h or 10.0))
+    ist_all, krank_all = split_ist(entries, cats, variante, float(settings.klassenfahrt_cap_h or 10.0),
+                                   klassenfahrt_days(db, lo, hi))
 
     pdays = cal.compute_days(db, period, mode, settings=settings, inputs=inputs)
     erfassung_ab = settings.erfassung_ab
@@ -635,7 +653,8 @@ def day_detail(db: Session, d: date) -> DayDetail:
                     EntryRow(d, part_seconds, tuple(e.flags or ()), _main_category_id(cats, e.category_id))
                 )
     ist_by_day, krank = split_ist(
-        rows, cats, settings.klassenfahrt_variante or "B", float(settings.klassenfahrt_cap_h or 10.0)
+        rows, cats, settings.klassenfahrt_variante or "B", float(settings.klassenfahrt_cap_h or 10.0),
+        klassenfahrt_days(db, d, d),
     )
     row = core_account.build_ledger(
         [day], params, ist_by_day, bool(settings.krank_neutralisiert), krank, settings.erfassung_ab

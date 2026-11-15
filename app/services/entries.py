@@ -299,6 +299,7 @@ def entry_to_dict(entry: TimeEntry) -> dict[str, Any]:
         "updated_at": _iso_utc(entry.updated_at),
         "deleted_at": _iso_utc(entry.deleted_at),
         "locked": entry.locked,
+        "tagessumme": bool(entry.tagessumme),
     }
 
 
@@ -427,8 +428,8 @@ def _resolve_category(db: Session, category_id: Any, subcategory_id: Any, *, che
 
 
 def _validate_attrs(db: Session, *, category: Category, klasse: str | None, location: str | None,
-                    note: str | None, status: str, source: str) -> None:
-    if category.requires_note and not note:
+                    note: str | None, status: str, source: str, note_required: bool = True) -> None:
+    if note_required and category.requires_note and not note:
         raise EntryValidationError(f"Für die Kategorie „{category.name}“ ist eine Notiz Pflicht.")
     if klasse is not None:
         settings = _get_settings(db)
@@ -751,6 +752,7 @@ def create_entry(
     reason: str | None = None,
     now: datetime | None = None,
     commit: bool = True,
+    tagessumme: bool = False,
 ) -> list[TimeEntry]:
     """Create an entry; returns all stored parts (more than one if it crossed local midnight).
 
@@ -759,6 +761,11 @@ def create_entry(
     is accepted and normalised), ``subcategory_id``, ``klasse``, ``fach``, ``location``, ``note``, ``flags``,
     ``status`` (default 'active'), ``import_batch_id``, ``timetable_slot_id``. Naive datetimes are UTC.
     ``reason`` is required when the entry lands in a closed month.
+
+    ``tagessumme=True`` (only :mod:`app.services.quick_entry`): the entry is the day's Tagessumme of the
+    "Erfassen" screen (``time_entry.tagessumme``). Its category follows the day type chosen there, so the
+    category's active flag and a mandatory note are not checked (the type picker must keep working even if
+    e.g. Fortbildung is hidden from the entry form).
     """
     unknown = set(data) - CREATE_FIELDS
     if unknown:
@@ -776,13 +783,14 @@ def create_entry(
         allow_running=source == EntrySource.TIMER.value,
         max_total=None if source == EntrySource.TIMER.value else MAX_PIECE_SECONDS,
     )
-    category, sub = _resolve_category(db, data.get("category_id"), data.get("subcategory_id"), check_active=True)
+    category, sub = _resolve_category(db, data.get("category_id"), data.get("subcategory_id"),
+                                      check_active=not tagessumme)
     klasse = _clean_str(data.get("klasse"))
     location = _clean_str(data.get("location"))
     note = _clean_str(data.get("note"))
     status = _clean_str(data.get("status")) or EntryStatus.ACTIVE.value
     _validate_attrs(db, category=category, klasse=klasse, location=location, note=note, status=status,
-                    source=source)
+                    source=source, note_required=not tagessumme)
     user_flags, sticky_flags = _split_input_flags(data.get("flags"))
     user_flags |= _subcategory_flags(category, sub, user_flags)
 
@@ -821,6 +829,7 @@ def create_entry(
             created_at=now,
             updated_at=now,
             locked=year_month(day) in closed,
+            tagessumme=bool(tagessumme and not times.has_bounds),
         )
         db.add(entry)
         created.append(entry)
@@ -848,6 +857,7 @@ def update_entry(
     now: datetime | None = None,
     commit: bool = True,
     recorded_now: bool = False,
+    tagessumme: bool = False,
 ) -> list[TimeEntry]:
     """Apply ``changes`` (same keys as :func:`create_entry`, partial); returns ``[entry, *new split parts]``.
 
@@ -857,6 +867,10 @@ def update_entry(
 
     ``recorded_now``: the change records the day's value *now* (day totals of the "Erfassen" screen), so the
     48-h rule is also checked against ``now`` – like a move to another day.
+
+    ``tagessumme=True`` (only :mod:`app.services.quick_entry`): a write of the day's Tagessumme – the category's
+    active flag and a mandatory note are not checked (see :func:`create_entry`). Any other change of a
+    Tagessumme's category/subcategory, or giving it bounds, turns it into an ordinary entry (marker cleared).
     """
     entry = get_entry(db, entry_id)
     if entry.deleted_at is not None:
@@ -902,7 +916,7 @@ def update_entry(
     else:
         sub_in = entry.subcategory_id
     category, sub = _resolve_category(db, changes.get("category_id", entry.category_id), sub_in,
-                                      check_active=cat_changed)
+                                      check_active=cat_changed and not tagessumme)
     klasse = _clean_str(changes["klasse"]) if "klasse" in changes else entry.klasse
     fach = _clean_str(changes["fach"]) if "fach" in changes else entry.fach
     location = _clean_str(changes["location"]) if "location" in changes else entry.location
@@ -910,7 +924,7 @@ def update_entry(
     status = (_clean_str(changes.get("status")) or entry.status) if "status" in changes else entry.status
     timetable_slot_id = changes["timetable_slot_id"] if "timetable_slot_id" in changes else entry.timetable_slot_id
     _validate_attrs(db, category=category, klasse=klasse if "klasse" in changes else None, location=location,
-                    note=note, status=status, source=entry.source)
+                    note=note, status=status, source=entry.source, note_required=not tagessumme)
 
     current_flags = set(entry.flags or [])
     if "flags" in changes:
@@ -977,6 +991,12 @@ def update_entry(
     entry.flags = new_flags
     entry.updated_at = now
     entry.locked = _month_close(db, days[0]) is not None
+    if tagessumme and not times.has_bounds:
+        entry.tagessumme = True  # e.g. an old unmarked duration-only AZ entry written as the day's Tagessumme
+    elif entry.tagessumme and not tagessumme and (
+            times.has_bounds or old_snapshot["category_id"] != entry.category_id
+            or old_snapshot["subcategory_id"] != entry.subcategory_id):
+        entry.tagessumme = False  # edited by hand into an ordinary entry: no longer the day's Tagessumme
 
     result = [entry]
     for (a, b), day in zip(pieces[1:], days[1:], strict=True):

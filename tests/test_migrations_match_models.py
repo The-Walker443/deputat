@@ -1,4 +1,4 @@
-"""Alembic migrations (incl. 0002–0004) produce exactly the schema of app/db/models.py."""
+"""Alembic migrations (incl. 0002–0006) produce exactly the schema of app/db/models.py."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_migrated_schema_matches_models(db):
     assert diff == []
     columns = {c["name"] for c in inspect(conn).get_columns("month_close")}
     assert {"note", "forced_items"} <= columns
-    assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0005"
+    assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0006"
     settings_columns = {c["name"] for c in inspect(conn).get_columns("settings")}
     assert "password_hash" not in settings_columns  # no login (0003)
     assert "api_token_hash" in settings_columns
@@ -46,7 +46,7 @@ def test_upgrade_from_0001_keeps_data_and_drops_password_hash(settings_env, tmp_
         with engine.begin() as conn:
             cfg.attributes["connection"] = conn
             command.upgrade(cfg, "head")
-            assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0005"
+            assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0006"
             assert "password_hash" not in {c["name"] for c in inspect(conn).get_columns("settings")}
             row = conn.exec_driver_sql("SELECT note, forced_items FROM month_close").one()
             assert row == (None, "[]")
@@ -123,3 +123,107 @@ def test_json_backup_of_0004_restores_into_0005(db):
 
     with pytest.raises(export.ExportError):
         export.restore_json(db, backup, replace=True, safety_backup=False)
+
+
+def test_0006_marks_existing_tagessummen(settings_env, tmp_path):
+    """A database at 0005 with day totals (incl. a backfilled one with a note) gets ``time_entry.tagessumme``:
+    per day the newest entry of the old criteria is marked; deleted, bounded, other-category, subcategory and
+    imported entries are not. ``day_override`` gets ``erfassung_typ``/``erfassung_typ_at``. Downgrade drops them."""
+    from alembic import command
+    from sqlalchemy import create_engine
+
+    from app.db.session import alembic_config
+
+    url = f"sqlite:///{(tmp_path / 'live.sqlite').as_posix()}"
+    engine = create_engine(url)
+    entry_sql = (
+        "INSERT INTO time_entry (id, start_at, end_at, duration_seconds, has_bounds, day, category_id, "
+        "subcategory_id, note, flags, source, status, created_at, updated_at, deleted_at, locked) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[\"ohne_zeitgrenzen\"]', ?, 'active', ?, ?, ?, 0)"
+    )
+    try:
+        cfg = alembic_config()
+        cfg.set_main_option("sqlalchemy.url", url)
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0005")
+            for code, sort in (("U", 10), ("AZ", 150)):
+                conn.exec_driver_sql(
+                    "INSERT INTO category (code, name, color, sort, is_unterricht, counts_as_mehrarbeit_candidate, "
+                    "active, is_pseudo, requires_note) VALUES (?, ?, '#2563EB', ?, 0, 0, 1, 0, 0)", (code, code, sort))
+            u, az = (conn.exec_driver_sql("SELECT id FROM category WHERE code = ?", (c,)).scalar() for c in ("U", "AZ"))
+            conn.exec_driver_sql(
+                "INSERT INTO category (code, name, color, sort, parent_id, is_unterricht, "
+                "counts_as_mehrarbeit_candidate, active, is_pseudo, requires_note) "
+                "VALUES ('AZ.1', 'Sub', '#2563EB', 10, ?, 0, 0, 1, 0, 0)", (az,))
+            sub = conn.exec_driver_sql("SELECT id FROM category WHERE code = 'AZ.1'").scalar()
+            rows = [
+                # id, day, category, sub, note, source, has_bounds, created, deleted
+                ("a-mon", "2026-11-02", az, None, None, "manuell", 0, "2026-11-02 20:00:00", None),
+                ("b-tue-old", "2026-11-03", az, None, None, "manuell", 0, "2026-11-03 18:00:00", None),
+                ("c-tue-new", "2026-11-03", az, None, None, "manuell", 0, "2026-11-03 19:00:00", None),
+                ("d-backfill", "2026-10-05", az, None, "Nachtrag aus Papierliste", "manuell", 0,
+                 "2026-11-10 09:00:00", None),
+                ("e-deleted", "2026-11-04", az, None, None, "manuell", 0, "2026-11-04 20:00:00",
+                 "2026-11-04 21:00:00"),
+                ("f-bounded", "2026-11-05", az, None, None, "manuell", 1, "2026-11-05 20:00:00", None),
+                ("g-other-cat", "2026-11-06", u, None, None, "manuell", 0, "2026-11-06 20:00:00", None),
+                ("h-sub", "2026-11-09", az, sub, None, "manuell", 0, "2026-11-09 20:00:00", None),
+                ("i-import", "2026-11-10", az, None, None, "import", 0, "2026-11-10 20:00:00", None),
+            ]
+            for rid, day, cat, subcat, note, source, bounds, created, deleted in rows:
+                conn.exec_driver_sql(entry_sql, (rid, f"{day} 00:00:00", f"{day} 06:00:00", 21600, bounds, day, cat,
+                                                 subcat, note, source, created, created, deleted))
+            conn.exec_driver_sql("INSERT INTO day_override (date, absence_type, urlaub_manuell, updated_at) "
+                                 "VALUES ('2026-11-03', 'krank', 0, '2026-11-03 07:00:00')")
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "head")
+            marked = dict(conn.exec_driver_sql("SELECT id, tagessumme FROM time_entry").fetchall())
+            assert {k for k, v in marked.items() if v} == {"a-mon", "c-tue-new", "d-backfill"}
+            assert conn.exec_driver_sql(
+                "SELECT absence_type, erfassung_typ, erfassung_typ_at FROM day_override").one() == ("krank", None, None)
+            # the hash fields are untouched (closed months keep their Prüf-Hash)
+            assert conn.exec_driver_sql("SELECT flags FROM time_entry WHERE id = 'a-mon'").scalar() == \
+                '["ohne_zeitgrenzen"]'
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            conn.exec_driver_sql("INSERT INTO day_override (date, urlaub_manuell, erfassung_typ, updated_at) "
+                                 "VALUES ('2026-11-12', 0, 'klassenfahrt', '2026-11-12 07:00:00')")
+            command.downgrade(cfg, "0005")
+            assert "tagessumme" not in {c["name"] for c in inspect(conn).get_columns("time_entry")}
+            assert "erfassung_typ" not in {c["name"] for c in inspect(conn).get_columns("day_override")}
+            assert [r[0] for r in conn.exec_driver_sql("SELECT date FROM day_override").fetchall()] == ["2026-11-03"]
+    finally:
+        engine.dispose()
+
+
+def test_json_backup_of_0005_restores_into_0006_and_marks_day_totals(db):
+    """A JSON backup taken before 0006 (no ``tagessumme`` / ``erfassung_typ`` columns) restores; its day totals
+    are marked afterwards like migration 0006 does, and they keep working on "Erfassen"."""
+    from datetime import date, datetime
+
+    from sqlalchemy import select
+
+    from app.db.models import Category, TimeEntry
+    from app.services import export
+    from app.services import quick_entry as qe
+
+    az = db.scalar(select(Category.id).where(Category.code == "AZ", Category.parent_id.is_(None)))
+    day = date(2026, 11, 3)
+    now = datetime(2026, 11, 3, 19, 0)
+    qe.set_day_total(db, day, 6 * 3600, now=now, today=day)
+    backup = export.export_json(db)
+    backup["schema_revision"] = "0005"
+    for row in backup["tables"]["time_entry"]:
+        row.pop("tagessumme")
+    for row in backup["tables"]["day_override"]:
+        row.pop("erfassung_typ"), row.pop("erfassung_typ_at")
+    backup["sha256"] = export._checksum(backup["tables"])
+    export.restore_json(db, backup, replace=True, safety_backup=False)
+    (entry,) = db.scalars(select(TimeEntry).where(TimeEntry.day == day)).all()
+    assert entry.tagessumme is True and entry.category_id == az
+    qe.set_day_typ(db, day, "klassenfahrt", now=now, today=day)  # works without a school year
+    db.refresh(entry)
+    assert db.get(Category, entry.category_id).code == "SV" and "klassenfahrt" in entry.flags
+    assert qe.day_state(db, day).tagessumme.id == entry.id

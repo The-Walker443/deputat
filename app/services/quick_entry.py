@@ -7,8 +7,11 @@ of the field (the row says "Timer läuft"); once stopped, its entry counts like 
 
 Entering a value sets that total. The app keeps exactly one **Tagessumme** entry per day for it:
 
-* duration-only (``has_bounds=False`` -> ``ohne_zeitgrenzen``), ``source='manuell'``, main category ``AZ``
-  ("Arbeitszeit (pauschal, nicht aufgeschlüsselt)", :data:`app.db.seed.TAGESSUMME_CODE`), no subcategory;
+* marked ``time_entry.tagessumme`` (migration 0006), duration-only (``has_bounds=False`` ->
+  ``ohne_zeitgrenzen``), ``source='manuell'``, no subcategory; its main category follows the **day type**
+  (see below): ``AZ`` ("Arbeitszeit (pauschal, nicht aufgeschlüsselt)", :data:`app.db.seed.TAGESSUMME_CODE`)
+  for a normal day, ``F`` for Fortbildung, ``SV`` for Klassenfahrt (plus the flag ``klassenfahrt``) and
+  Schulveranstaltung;
 * ``duration = entered total − sum of all other entries of the day`` ("detail");
 * totals are compared in whole minutes as displayed (``fmt_hm``): the displayed total again is a no-op,
   the displayed detail sum, 0 or empty soft-deletes the Tagessumme entry (nothing else is ever touched),
@@ -29,8 +32,25 @@ Entries added *after* the Tagessumme (a stopped timer, a confirmed timetable sug
 "keep the total or take the new sum?" – nothing is rewritten silently. Sending the current total again
 confirms the new sum (``action='bestaetigt'``).
 
-If several entries qualify as Tagessumme (e.g. one created by hand in *Einträge*), the newest one is the
-Tagessumme and the others count as detail.
+If several entries qualify as Tagessumme, the newest *marked* one is the Tagessumme and the others count as
+detail. Unmarked duration-only ``AZ`` entries (no subcategory, source 'manuell' – e.g. created by hand in
+*Einträge*, or restored from a backup taken before 0006) still qualify when no marked entry exists (the rule
+before 0006); writing such an entry marks it. A duration-only ``F``/``SV`` entry from the entry form never
+qualifies. Changing a Tagessumme's category or giving it bounds in *Einträge* turns it into an ordinary entry.
+
+**Day type** (:func:`set_day_typ`, ``PUT /api/days/{date}/typ``): ``unterricht`` (default), ``krank`` (whole
+day without hours: stored as calendar absence ``krank``, the Tagessumme is removed – individual entries
+stay and count on top), ``fortbildung`` (calendar absence ``fortbildung``: soll unchanged, no timetable
+suggestions, not a leave candidate; Tagessumme category ``F``), ``klassenfahrt`` (``day_override.erfassung_typ``;
+Tagessumme ``SV`` + flag ``klassenfahrt`` -> the Klassenfahrt variant/cap applies) and ``schulveranstaltung``
+(``erfassung_typ``; Tagessumme ``SV``). Switching only changes the Tagessumme's category/flags (revision);
+individually recorded entries keep theirs. Days with an absence *entered* in the calendar that the screen does not
+manage (Dienstbefreiung, Sonderurlaub, Elternzeit, manually assigned Urlaub) cannot be switched here
+(:class:`DayTypLocked`); leave of the automatic plan can (:func:`fixed_absence`). Only *marked* Tagessummen are
+retyped (a hand-made AZ entry becomes the Tagessumme only through a value write). Krank set in the calendar removes
+the Tagessumme like the chip (:func:`apply_calendar_absences`). A Klassenfahrt day is a trip day for the ledger
+whatever entries it holds (``ledger.klassenfahrt_days``), so the row's cap hint comes from the ledger.
+Tagessumme writes do not check whether F/SV are deactivated or need a note (the type is an explicit choice).
 
 Read side: :func:`week_view` / :func:`day_view` combine the raw recorded totals with the account figures of
 :mod:`app.services.ledger` (soll, Ist incl. Krank-Gutschrift, saldo) of each day's own period.
@@ -46,16 +66,16 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.calendar import build_days, holidays_between
 from app.core.parsing import parse_duration
 from app.core.types import Day
-from app.db.models import Category, EntrySource, EntryStatus, MonthClose, Period, TimeEntry
+from app.db.models import Category, DayOverride, EntrySource, EntryStatus, MonthClose, Period, TimeEntry
 from app.db.seed import TAGESSUMME_CODE
 from app.services import entries as entries_svc
-from app.services.entries import EntryConflict, EntryValidationError
+from app.services.entries import USER_FLAGS, EntryConflict, EntryLocked, EntryValidationError
 from app.util import fmt_hm, local_midnight_utc, now_utc, to_utc_naive, today_local
 
 log = logging.getLogger("app.services.quick_entry")
@@ -70,7 +90,9 @@ AT_FUTURE_TOLERANCE = timedelta(minutes=5)
 AT_MAX_AGE = timedelta(days=14)
 DELAYED_AFTER = timedelta(minutes=2)
 
-_WRITE_LOCK = threading.Lock()
+# Serialises every write that touches the Tagessummen: the two "Erfassen" endpoints and the calendar changes that
+# retype or remove them (calendar_service). Re-entrant: a type change runs the calendar change inside the lock.
+_WRITE_LOCK = threading.RLock()
 
 WEEKDAYS_SHORT = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 WEEKDAYS_LONG = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
@@ -85,6 +107,61 @@ ABSENCE_BADGES = {
     "sonderurlaub": "Sonderurlaub",
     "elternzeit": "Elternzeit",
 }
+
+# --------------------------------------------------------------------------- day types ("Typ" chip)
+TYP_UNTERRICHT = "unterricht"
+TYP_KRANK = "krank"
+TYP_FORTBILDUNG = "fortbildung"
+TYP_KLASSENFAHRT = "klassenfahrt"
+TYP_SCHULVERANSTALTUNG = "schulveranstaltung"
+DAY_TYPES = (TYP_UNTERRICHT, TYP_KRANK, TYP_FORTBILDUNG, TYP_KLASSENFAHRT, TYP_SCHULVERANSTALTUNG)
+TYP_LABELS = {
+    TYP_UNTERRICHT: "Unterricht",
+    TYP_KRANK: "Krank",
+    TYP_FORTBILDUNG: "Fortbildung",
+    TYP_KLASSENFAHRT: "Klassenfahrt",
+    TYP_SCHULVERANSTALTUNG: "Schulveranstaltung",
+}
+# Types stored as calendar absence (day_override.absence_type) and types stored in day_override.erfassung_typ.
+ABSENCE_TYPES = frozenset({TYP_KRANK, TYP_FORTBILDUNG})
+ERFASSUNG_TYPES = frozenset({TYP_KLASSENFAHRT, TYP_SCHULVERANSTALTUNG})
+# Calendar absences the screen shows but does not change (link to the calendar instead) – Urlaub only when it was
+# assigned by hand (:func:`fixed_absence`); leave of the automatic plan is shown as AUTO_LEAVE_LABEL and stays
+# switchable (Krank/Fortbildung move it to another day).
+FIXED_ABSENCES = frozenset({"urlaub", "dienstbefreiung", "sonderurlaub", "elternzeit"})
+AUTO_LEAVE_LABEL = "Urlaub (autom.)"
+AUTO_LEAVE_HINT = "Urlaub automatisch zugeordnet – bei Krank oder Fortbildung rückt er auf einen anderen Ferientag."
+FLAG_KLASSENFAHRT = "klassenfahrt"
+FLAG_NACHTBEREITSCHAFT = "nachtbereitschaft"
+# (category code, klassenfahrt flag) of the Tagessumme per type; krank keeps none (only one left over from a
+# calendar-set krank day, which stays as it is).
+TYP_TARGET = {TYP_UNTERRICHT: (TAGESSUMME_CODE, False), TYP_KRANK: (TAGESSUMME_CODE, False),
+              TYP_FORTBILDUNG: ("F", False), TYP_KLASSENFAHRT: ("SV", True), TYP_SCHULVERANSTALTUNG: ("SV", False)}
+KRANK_REASON = "Tag als krank markiert"
+# Chip text when no type is chosen: the calendar's own kind of day.
+DAY_KIND_LABELS = {"schultag": "Unterricht", "ferientag": "Ferien", "feiertag": "Feiertag",
+                   "wochenende": "Wochenende", "unterrichtsfrei": "Unterrichtsfrei"}
+DAY_KIND_STYLE = {"schultag": "unterricht", "ferientag": "ferien", "feiertag": "feiertag",
+                  "wochenende": "wochenende", "unterrichtsfrei": "frei"}
+NO_SOLL_KINDS = frozenset({"wochenende", "feiertag"})
+
+# The pre-0006 identification of a Tagessumme (same statement as migration 0006): used after restoring a JSON
+# backup taken before 0006, whose time_entry rows carry no "tagessumme" column.
+_LEGACY_CRITERIA = (
+    "{t}.category_id = (SELECT id FROM category WHERE code = 'AZ' AND parent_id IS NULL) "
+    "AND {t}.subcategory_id IS NULL AND {t}.has_bounds = 0 AND {t}.source = 'manuell' "
+    "AND {t}.status = 'active' AND {t}.deleted_at IS NULL AND {t}.end_at IS NOT NULL"
+)
+LEGACY_TAGESSUMME_SQL = (
+    "UPDATE time_entry SET tagessumme = 1 WHERE id IN ("
+    "SELECT t.id FROM time_entry t WHERE " + _LEGACY_CRITERIA.format(t="t") + " "
+    "AND NOT EXISTS (SELECT 1 FROM time_entry n WHERE n.day = t.day AND " + _LEGACY_CRITERIA.format(t="n") + " "
+    "AND (n.created_at > t.created_at OR (n.created_at = t.created_at AND n.id > t.id))))"
+)
+
+
+class DayTypLocked(EntryConflict):
+    """The day carries a calendar absence the "Erfassen" screen does not manage (HTTP 409)."""
 
 
 def round_minute(seconds: int) -> int:
@@ -186,21 +263,40 @@ def check_total(seconds: Any, *, max_seconds: int = MAX_DAY_TOTAL) -> int:
     return seconds
 
 
-def input_time(at: Any, now: datetime) -> tuple[datetime, bool]:
+def _parse_at(value: Any) -> datetime:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.strip())
+        except ValueError:
+            raise EntryValidationError("Ungültiger Zeitpunkt der Eingabe.") from None
+    if not isinstance(value, datetime):
+        raise EntryValidationError("Ungültiger Zeitpunkt der Eingabe.")
+    return to_utc_naive(value)
+
+
+def input_time(at: Any, now: datetime, sent_at: Any = None) -> tuple[datetime, bool]:
     """Device time of the input -> ``(effective time, delayed)`` (naive UTC).
 
     ``None`` / implausibly old -> server time. More than 5 min in the future -> :class:`EntryValidationError`.
+
+    ``sent_at``: the device time at which the request was *sent* (header ``X-Sent-At`` of the offline queue).
+    Both times come from the same device clock, so ``sent_at - at`` is the real waiting time whatever the
+    clock's offset: the input happened that long before ``now``, and only a wait of more than
+    :data:`DELAYED_AFTER` makes the request "delayed" (a device whose clock is a few minutes slow is not).
     """
     if at is None or at == "":
         return now, False
-    if isinstance(at, str):
+    at = _parse_at(at)
+    if sent_at not in (None, ""):
         try:
-            at = datetime.fromisoformat(at.strip())
-        except ValueError:
-            raise EntryValidationError("Ungültiger Zeitpunkt der Eingabe.") from None
-    if not isinstance(at, datetime):
-        raise EntryValidationError("Ungültiger Zeitpunkt der Eingabe.")
-    at = to_utc_naive(at).replace(microsecond=0)
+            age = _parse_at(sent_at) - at
+        except EntryValidationError:
+            age = None
+        if age is not None and age >= timedelta(0):
+            if age > AT_MAX_AGE:
+                return now, True
+            return (now - age).replace(microsecond=0), age > DELAYED_AFTER
+    at = at.replace(microsecond=0)
     if at > now + AT_FUTURE_TOLERANCE:
         raise EntryValidationError("Der Zeitpunkt der Eingabe liegt in der Zukunft – Uhr des Geräts prüfen.")
     if at < now - AT_MAX_AGE:
@@ -212,22 +308,72 @@ def input_time(at: Any, now: datetime) -> tuple[datetime, bool]:
 # =========================================================================== day state
 
 
-def tagessumme_category(db: Session) -> Category:
-    cat = db.scalars(select(Category).where(Category.code == TAGESSUMME_CODE, Category.parent_id.is_(None))).first()
+def main_category(db: Session, code: str) -> Category:
+    cat = db.scalars(select(Category).where(Category.code == code, Category.parent_id.is_(None))).first()
     if cat is None:  # the seed runs on every start; only a broken catalogue gets here
-        raise EntryValidationError("Kategorie „AZ – Arbeitszeit (pauschal)“ fehlt – App neu starten.")
+        raise EntryValidationError(f"Kategorie „{code}“ fehlt – App neu starten.")
     return cat
 
 
+def tagessumme_category(db: Session) -> Category:
+    return main_category(db, TAGESSUMME_CODE)
+
+
 def is_tagessumme(entry: TimeEntry, az_id: int) -> bool:
+    """Candidate for the day's Tagessumme: marked (0006), or an unmarked duration-only AZ entry (old rule)."""
+    if entry.has_bounds or entry.status != EntryStatus.ACTIVE.value or entry.deleted_at is not None:
+        return False
+    if entry.tagessumme:
+        return True
     return (
         entry.category_id == az_id
         and entry.subcategory_id is None
-        and not entry.has_bounds
         and entry.source == EntrySource.MANUELL.value
-        and entry.status == EntryStatus.ACTIVE.value
-        and entry.deleted_at is None
     )
+
+
+def mark_legacy_tagessummen(db: Session) -> int:
+    """Mark the Tagessummen of data from before migration 0006 (e.g. a restored JSON backup); commits."""
+    count = db.execute(text(LEGACY_TAGESSUMME_SQL)).rowcount or 0
+    db.commit()
+    return count
+
+
+def stored_typ(override: DayOverride | None) -> str:
+    """The day type chosen for a day (``unterricht`` if none): calendar absence krank/fortbildung first."""
+    if override is None:
+        return TYP_UNTERRICHT
+    if override.absence_type in ABSENCE_TYPES:
+        return str(override.absence_type)
+    if override.erfassung_typ in ERFASSUNG_TYPES:
+        return str(override.erfassung_typ)
+    return TYP_UNTERRICHT
+
+
+def fixed_absence(override: DayOverride | None, absence: str | None) -> str | None:
+    """The day's absence if the screen must not change it (link to the calendar instead), else ``None``.
+
+    Fixed are absences the user *entered* in the calendar: Dienstbefreiung, Sonderurlaub, Elternzeit (only
+    possible as override) and manually assigned leave (``urlaub_manuell``). Leave the automatic leave plan put on
+    the day (e.g. Buß- und Bettag, Ferien weekdays) is not fixed: Krank/Fortbildung move it to another candidate,
+    exactly as the calendar form does.
+    """
+    if absence not in FIXED_ABSENCES:
+        return None
+    if absence == "urlaub" and not (override is not None and override.urlaub_manuell):
+        return None
+    return absence
+
+
+def tagessumme_target(override: DayOverride | None) -> tuple[str, bool]:
+    """(category code, klassenfahrt flag) the day's Tagessumme should have."""
+    if override is not None and override.absence_type == TYP_FORTBILDUNG:
+        return "F", False
+    if override is not None and override.erfassung_typ == TYP_KLASSENFAHRT:
+        return "SV", True
+    if override is not None and override.erfassung_typ == TYP_SCHULVERANSTALTUNG:
+        return "SV", False
+    return TAGESSUMME_CODE, False
 
 
 @dataclass
@@ -241,6 +387,7 @@ class DayState:
     running: bool  # a running timer covers this day (not part of the total)
     running_seconds: int = 0
     later_seconds: int = 0  # detail entries added/changed after the Tagessumme's last change
+    nb_seconds: int = 0  # detail entries flagged nachtbereitschaft (variant B drops them)
 
     @property
     def tagessumme_seconds(self) -> int:
@@ -298,8 +445,9 @@ def day_states(db: Session, start: date, end: date, *, now: datetime | None = No
     d = start
     while d <= end:
         found = candidates.get(d, [])
-        main = found[-1] if found else None  # newest (rows are ordered by created_at)
-        detail = details.get(d, []) + found[:-1]
+        marked = [e for e in found if e.tagessumme]
+        main = (marked or found)[-1] if found else None  # newest marked, else newest (ordered by created_at)
+        detail = details.get(d, []) + [e for e in found if e is not main]
         later = 0
         if main is not None and main.updated_at is not None:
             later = sum(int(e.duration_seconds or 0) for e in detail
@@ -312,6 +460,7 @@ def day_states(db: Session, start: date, end: date, *, now: datetime | None = No
             running=d in running,
             running_seconds=running.get(d, 0),
             later_seconds=later,
+            nb_seconds=sum(int(e.duration_seconds or 0) for e in detail if FLAG_NACHTBEREITSCHAFT in (e.flags or [])),
         )
         d += timedelta(days=1)
     return result
@@ -332,6 +481,7 @@ def set_day_total(
     client_action_id: str | None = None,
     reason: str | None = None,
     at: Any = None,
+    sent_at: Any = None,
     now: datetime | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
@@ -344,7 +494,7 @@ def set_day_total(
     entries_svc._check_year(day.year)
     seconds = check_total(seconds, max_seconds=day_length(day))
     now = to_utc_naive(now or now_utc()).replace(microsecond=0)
-    when, delayed = input_time(at, now)
+    when, delayed = input_time(at, now, sent_at)
 
     with _WRITE_LOCK:
         if db.in_transaction():
@@ -364,6 +514,10 @@ def _apply_total(db: Session, day: date, seconds: int, *, reason: str | None, no
     ts = state.tagessumme
     if ts is not None and delayed and ts.updated_at is not None and when < ts.updated_at:
         return "veraltet"  # a queued value older than the last change (e.g. from another device)
+    override = db.get(DayOverride, day)
+    if (delayed and override is not None and stored_typ(override) == TYP_KRANK
+            and override.erfassung_typ_at is not None and when < override.erfassung_typ_at):
+        return "veraltet"  # typed before the day was marked krank (e.g. on another device)
 
     if seconds == round_minute(state.total):
         if ts is not None and state.later_seconds and not ts.locked and entries_svc._month_close(db, day) is None:
@@ -382,19 +536,236 @@ def _apply_total(db: Session, day: date, seconds: int, *, reason: str | None, no
             return "unveraendert"
         entries_svc.delete_entry(db, ts.id, reason=reason, now=when)
         return "geloescht"
+    code, klassenfahrt = tagessumme_target(override)
     if ts is None:
         entries_svc.create_entry(
             db,
-            {"has_bounds": False, "day": day, "duration_seconds": target, "category_id": tagessumme_category(db).id},
+            {"has_bounds": False, "day": day, "duration_seconds": target, "category_id": main_category(db, code).id,
+             "flags": [FLAG_KLASSENFAHRT] if klassenfahrt else []},
             source=EntrySource.MANUELL.value,
             reason=reason,
             now=when,
+            tagessumme=True,
         )
         return "angelegt"
     if int(ts.duration_seconds or 0) == target:
         return "unveraendert"
-    entries_svc.update_entry(db, ts.id, {"duration_seconds": target}, reason=reason, now=when, recorded_now=True)
+    changes: dict[str, Any] = {"duration_seconds": target, **_type_changes(db, ts, code, klassenfahrt)}
+    entries_svc.update_entry(db, ts.id, changes, reason=reason, now=when, recorded_now=True, tagessumme=True)
     return "geaendert"
+
+
+def _type_changes(db: Session, ts: TimeEntry, code: str, klassenfahrt: bool) -> dict[str, Any]:
+    """Changes that give the Tagessumme ``ts`` the category/flag of its day type (empty if it has them)."""
+    category = main_category(db, code)
+    current = set(ts.flags or [])
+    user = (current & USER_FLAGS) - {FLAG_KLASSENFAHRT}
+    if klassenfahrt:
+        user.add(FLAG_KLASSENFAHRT)
+    changes: dict[str, Any] = {}
+    if ts.category_id != category.id or ts.subcategory_id is not None:
+        changes.update(category_id=category.id, subcategory_id=None)
+    if (FLAG_KLASSENFAHRT in current) != klassenfahrt:
+        changes["flags"] = sorted(user)
+    return changes
+
+
+def _retype(db: Session, ts: TimeEntry, code: str, klassenfahrt: bool, *, reason: str | None, now: datetime) -> bool:
+    """Switch the Tagessumme to the category/flag of its day type (no commit). The value is unchanged, so
+    ``updated_at`` (last change of the *value*: "veraltet", "added later" prompt) is kept."""
+    changes = _type_changes(db, ts, code, klassenfahrt)
+    if not changes:
+        return False
+    kept = ts.updated_at
+    entries_svc.update_entry(db, ts.id, changes, reason=reason, now=now, commit=False, tagessumme=True)
+    ts.updated_at = kept
+    db.flush()
+    return True
+
+
+def sync_tagessumme_types(db: Session, start: date, end: date, *, reason: str | None = None,
+                          now: datetime | None = None) -> int:
+    """Bring every Tagessumme in ``[start, end]`` in line with its day type (after a calendar change, e.g.
+    Fortbildung set in the calendar -> category F). Locked days without ``reason`` are skipped. Commits.
+
+    Only *marked* Tagessummen (``time_entry.tagessumme``) are touched: an unmarked duration-only AZ entry made by
+    hand in *Einträge* is never retyped silently (it becomes the Tagessumme only through a value write)."""
+    now = to_utc_naive(now or now_utc()).replace(microsecond=0)
+    with _WRITE_LOCK:
+        if db.in_transaction():
+            db.commit()
+        states = day_states(db, start, end, now=now)
+        if not any(st.tagessumme is not None and st.tagessumme.tagessumme for st in states.values()):
+            return 0
+        overrides = {o.date: o for o in db.scalars(select(DayOverride).where(DayOverride.date.between(start, end)))}
+        changed = 0
+        for d, st in states.items():
+            if st.tagessumme is None or not st.tagessumme.tagessumme:
+                continue
+            code, klassenfahrt = tagessumme_target(overrides.get(d))
+            try:
+                changed += _retype(db, st.tagessumme, code, klassenfahrt, reason=reason, now=now)
+            except EntryLocked:
+                log.info("Tagessumme vom %s nicht angepasst: Monat abgeschlossen", d)
+        db.commit()
+    return changed
+
+
+def apply_calendar_absences(db: Session, before: dict[date, str | None], *, reason: str | None = None,
+                            now: datetime | None = None) -> int:
+    """After a calendar change of the absences (``before``: each changed day's previous absence), before its
+    commit: a day that became **krank** loses its (marked) Tagessumme – soft delete with revision, reason
+    :data:`KRANK_REASON` – and its "Erfassen" type, exactly like Krank chosen on the chip. Otherwise the day total
+    would count on top of the credited soll while the field on "Erfassen" is disabled. Individual entries stay.
+
+    No commit. Raises :class:`EntryLocked` for a locked Tagessumme without ``reason`` (the calendar's own
+    closed-month guard asks for the reason first). Returns the number of removed Tagessummen.
+    """
+    now = to_utc_naive(now or now_utc()).replace(microsecond=0)
+    removed = 0
+    for d, old in sorted(before.items()):
+        row = db.get(DayOverride, d)
+        if row is None or row.absence_type != TYP_KRANK or old == TYP_KRANK:
+            continue
+        row.erfassung_typ = None
+        ts = day_state(db, d, now=now).tagessumme
+        if ts is not None and ts.tagessumme:
+            entries_svc.delete_entry(db, ts.id, reason=f"{KRANK_REASON}: {reason}" if reason else KRANK_REASON,
+                                     now=now, commit=False)
+            removed += 1
+    db.flush()
+    return removed
+
+
+def check_typ(value: Any) -> str:
+    if value not in DAY_TYPES:
+        raise EntryValidationError("Unbekannter Tagestyp – erlaubt: " + ", ".join(DAY_TYPES) + ".")
+    return str(value)
+
+
+def set_day_typ(
+    db: Session,
+    day: date,
+    typ: str,
+    *,
+    client_action_id: str | None = None,
+    reason: str | None = None,
+    at: Any = None,
+    sent_at: Any = None,
+    now: datetime | None = None,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Set the day type of ``day`` (see module docstring); returns :func:`week_view` plus ``day``, ``action``
+    (geaendert | unveraendert | veraltet) and ``removed_seconds`` (Tagessumme removed by ``krank``).
+
+    Like :func:`set_day_total`: ``at`` = device time of the input (a delayed request older than the last type
+    change is ignored, ``veraltet``), repeating is harmless, ``reason`` is required in a closed month
+    (:class:`EntryLocked` / :class:`~app.services.calendar_service.CalendarLocked`, 423).
+    Errors: :class:`DayTypLocked` (409, absence from the calendar), :class:`EntryValidationError` (unknown type,
+    Krank on a weekend/holiday, Krank/Fortbildung outside every school year).
+    """
+    entries_svc._check_year(day.year)
+    typ = check_typ(typ)
+    now = to_utc_naive(now or now_utc()).replace(microsecond=0)
+    when, delayed = input_time(at, now, sent_at)
+
+    with _WRITE_LOCK:
+        if db.in_transaction():
+            db.commit()
+        try:
+            action, removed = _apply_typ(db, day, typ, reason=entries_svc._clean_str(reason), now=now, when=when,
+                                         delayed=delayed)
+        except Exception:
+            db.rollback()
+            raise
+
+    result = week_view(db, monday_of(day), today=today, now=now)
+    result["day"] = next(x for x in result["days"] if x["date"] == day.isoformat())
+    result["action"] = action
+    result["removed_seconds"] = removed
+    result["client_action_id"] = client_action_id
+    return result
+
+
+def _calendar_day(db: Session, day: date) -> tuple[Day, Period | None]:
+    """Core day (type, absence incl. the leave assignment) and its period."""
+    from app.db.models import CalendarDay
+    from app.services import calendar_service as cal
+
+    period = cal.period_for_date(db, day)
+    row = db.get(CalendarDay, day) if period is not None else None
+    if row is not None:
+        from app.core.types import AbsenceType, DayType
+
+        return Day(date=day, day_type=DayType(row.day_type),
+                   absence=AbsenceType(row.absence_type) if row.absence_type else None, ferien_id=row.ferien_id,
+                   holiday_name=row.holiday_name, is_holiday=row.day_type == DayType.FEIERTAG.value), period
+    return _fallback_days(db, [day])[day], period
+
+
+def _apply_typ(db: Session, day: date, typ: str, *, reason: str | None, now: datetime, when: datetime,
+               delayed: bool) -> tuple[str, int]:
+    from app.services import calendar_service as cal
+
+    override = db.get(DayOverride, day)
+    if (delayed and override is not None and override.erfassung_typ_at is not None
+            and when < override.erfassung_typ_at):
+        return "veraltet", 0
+    core, period = _calendar_day(db, day)
+    fixed = fixed_absence(override, core.absence.value if core.absence is not None else None)
+    if fixed:
+        label = ABSENCE_BADGES.get(fixed, fixed)
+        raise DayTypLocked(f"Der Tag ist im Kalender als {label} eingetragen – bitte dort ändern.")
+    state = day_state(db, day, now=now)
+    ts = state.tagessumme
+    current = stored_typ(override)
+    if typ == current:
+        if (ts is not None and ts.tagessumme and typ != TYP_KRANK and not ts.locked
+                and entries_svc._month_close(db, day) is None):
+            code, klassenfahrt = tagessumme_target(override)
+            if _retype(db, ts, code, klassenfahrt, reason=None, now=when):  # repair a missed sync
+                db.commit()
+                return "geaendert", 0
+        return "unveraendert", 0
+    if typ == TYP_KRANK and core.day_type.value in NO_SOLL_KINDS:
+        raise EntryValidationError("An Wochenenden und Feiertagen gibt es kein Soll – „Krank“ ist dort nicht nötig.")
+    current_absence = override.absence_type if override is not None else None
+    if typ in ABSENCE_TYPES:
+        new_absence = typ
+    elif current_absence in ABSENCE_TYPES:
+        new_absence = None
+    else:
+        new_absence = current_absence
+    absence_changes = new_absence != current_absence
+    if absence_changes and period is None:
+        raise EntryValidationError(f"Der {cal.fmt_date_de(day)} liegt in keinem angelegten Schuljahr – Krank und "
+                                   "Fortbildung lassen sich erst mit Schuljahr eintragen.")
+    if not reason and (entries_svc._month_close(db, day) is not None or (ts is not None and ts.locked)):
+        raise EntryLocked(entries_svc.LOCKED_MESSAGE)
+
+    if override is None:
+        override = DayOverride(date=day)
+        db.add(override)
+    override.erfassung_typ = typ if typ in ERFASSUNG_TYPES else None
+    override.erfassung_typ_at = when
+    db.flush()  # the calendar service looks the row up with Session.get
+    removed = 0
+    if ts is not None and typ == TYP_KRANK:
+        removed = int(ts.duration_seconds or 0)
+        entries_svc.delete_entry(db, ts.id, reason=f"{KRANK_REASON}: {reason}" if reason else KRANK_REASON,
+                                 now=when, commit=False)
+    elif ts is not None and ts.tagessumme:  # an unmarked AZ entry made by hand is not retyped (only value writes)
+        code, klassenfahrt = TYP_TARGET[typ]
+        _retype(db, ts, code, klassenfahrt, reason=reason, now=when)
+    if absence_changes:
+        # flush + closed-month guard + rematerialise + commit (one transaction with the changes above). A dormant
+        # manual-leave flag (automatic leave mode) cannot stay next to an absence – the calendar would refuse it.
+        cal.set_override(db, day, absence_type=new_absence, day_type=override.day_type,
+                         urlaub_manuell=bool(override.urlaub_manuell) and not new_absence, note=override.note,
+                         reason=reason, typ_at=when)
+    else:
+        db.commit()
+    return "geaendert", removed
 
 
 # =========================================================================== read
@@ -487,6 +858,55 @@ def _badges(day: Day | None, ferien_name: str | None) -> list[dict[str, str]]:
     return badges
 
 
+def _typ_info(override: DayOverride | None, kind: str, absence: str | None, *, in_period: bool, locked: bool,
+              krank_neutral: bool, kf_cap: int | None, total: int, counted: int | None) -> dict[str, Any]:
+    """Day type of one row: chip text/style, whether and to what it can be switched, Klassenfahrt cap hint.
+
+    ``counted``: the day's Ist as the account counts it (Klassenfahrt variant applied, ``None`` outside a period).
+    The cap hint is shown only when the account really counts less than the recorded total.
+    """
+    typ = stored_typ(override)
+    fixed = fixed_absence(override, absence) if typ not in ABSENCE_TYPES else None
+    auto_leave = absence == "urlaub" and fixed is None and typ not in ABSENCE_TYPES
+    default_label = AUTO_LEAVE_LABEL if auto_leave else DAY_KIND_LABELS.get(kind, "Unterricht")
+    default_style = "urlaub" if auto_leave else DAY_KIND_STYLE.get(kind, "unterricht")
+    if fixed:
+        label, style = ABSENCE_BADGES.get(fixed, fixed), ("urlaub" if fixed == "urlaub" else "frei")
+    elif typ != TYP_UNTERRICHT:
+        label, style = TYP_LABELS[typ], ("sv" if typ in ERFASSUNG_TYPES else typ)
+    else:
+        label, style = default_label, default_style
+    options = [t for t in DAY_TYPES
+               if not (t == TYP_KRANK and kind in NO_SOLL_KINDS) and not (t in ABSENCE_TYPES and not in_period)]
+    if typ not in options:
+        options.append(typ)
+    # shown greyed out with a reason instead of missing silently: Krank/Fortbildung need a school year
+    disabled = [t for t in DAY_TYPES if t in ABSENCE_TYPES and t not in options
+                and not (t == TYP_KRANK and kind in NO_SOLL_KINDS)]
+    cap = kf_cap if typ == TYP_KLASSENFAHRT else None
+    capped = bool(cap is not None and counted is not None and round_minute(counted) < round_minute(total))
+    return {
+        "typ": typ,
+        "typ_label": label,
+        "typ_style": style,
+        "typ_set": typ != TYP_UNTERRICHT,
+        "typ_default_label": default_label,
+        "typ_default_style": default_style,
+        "typ_fixed": fixed,  # calendar absence the screen does not change (link to the calendar)
+        "typ_changeable": fixed is None,  # closed month: with a reason (typ_needs_reason)
+        "typ_needs_reason": locked,
+        "typ_options": options,
+        "typ_disabled": disabled,
+        "typ_hint": AUTO_LEAVE_HINT if auto_leave else None,
+        "krank": typ == TYP_KRANK,
+        "krank_credit": typ == TYP_KRANK and krank_neutral and kind not in NO_SOLL_KINDS,
+        "krank_would_credit": krank_neutral and in_period and kind not in NO_SOLL_KINDS,
+        "kf_cap": cap,
+        "kf_capped": capped,
+        "kf_counted": counted if capped else None,
+    }
+
+
 def _prompt(st: DayState, locked: bool) -> dict[str, Any] | None:
     """Entries added after the Tagessumme: offer "back to the total you entered" or "the new sum is right"."""
     if st.tagessumme is None or not st.later_seconds or locked:
@@ -541,7 +961,10 @@ def week_view(db: Session, monday: date, *, today: date | None = None, now: date
             )
         )
     )
-    krank_neutral_setting = bool(get_settings(db).krank_neutralisiert) if ctxs else False
+    settings = get_settings(db)
+    krank_neutral_setting = bool(settings.krank_neutralisiert) if ctxs else False
+    overrides = {o.date: o for o in db.scalars(select(DayOverride).where(DayOverride.date.between(days[0], days[-1])))}
+    kf_cap = round(float(settings.klassenfahrt_cap_h or 0) * 3600) if settings.klassenfahrt_variante == "B" else None
 
     out_days: list[dict[str, Any]] = []
     for d in days:
@@ -590,6 +1013,11 @@ def week_view(db: Session, monday: date, *, today: date | None = None, now: date
             "korrigiert": "korrigiert" in flags,
             "locked": locked,
             "entries_url": f"/eintraege?von={d.isoformat()}&bis={d.isoformat()}",
+            "calendar_url": f"/kalender/tag/{d.isoformat()}",
+            "nb_seconds": st.nb_seconds if kf_cap is not None else 0,
+            **_typ_info(overrides.get(d), kind, absence, in_period=row is not None, locked=locked,
+                        krank_neutral=krank_neutral_setting, kf_cap=kf_cap, total=st.total,
+                        counted=ctx.ist_by_day.get(d, 0) if row is not None else None),
         })
 
     rows = [x for x in out_days if x["soll"] is not None]
@@ -630,6 +1058,7 @@ def week_view(db: Session, monday: date, *, today: date | None = None, now: date
         "krank_gutschrift": sum(x["krank_gutschrift"] for x in out_days),
         "is_schulwoche": bool(week_sum and week_sum.is_schulwoche),
         "saldo_konto": int(today_ctx.saldo_heute) if today_ctx is not None else None,
+        "kf_cap": kf_cap,  # Klassenfahrt cap of variant B (seconds), None for variant A
         "days": out_days,
     }
 

@@ -56,6 +56,14 @@
       bleibt gespeichert).</span>
   </div>
   {% endif %}
+  {% if entry.tagessumme %}
+  <div class="banner banner-info" role="status" data-tagessumme-hint>
+    {{ icon("info", 18) }}<span class="banner-body"><strong>Tagessumme von „Erfassen“.</strong> Die Dauer lässt sich hier
+      ändern. Mit Uhrzeiten oder einer anderen Kategorie wird daraus ein normaler Eintrag – das Feld auf
+      <a href="/erfassen/{{ entry.day.isocalendar()[0] }}-W{{ '%02d'|format(entry.day.isocalendar()[1]) }}">Erfassen</a>
+      zeigt dann die Summe der Einträge.</span>
+  </div>
+  {% endif %}
   {% if running %}
   <div class="banner banner-info" role="status">
     {{ icon("info", 18) }}<span class="banner-body">Der Timer läuft noch. Beenden auf „Heute“; hier lassen sich Kategorie

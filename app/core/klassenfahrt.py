@@ -4,7 +4,9 @@ Variant A counts every entry including night standby. Variant B (default,
 conservative) applies to every *day* with at least one entry flagged
 ``klassenfahrt``: entries flagged ``nachtbereitschaft`` are dropped and the
 sum of all remaining entries of that day (flagged or not) is capped at
-``cap_h`` hours. Days without a Klassenfahrt entry count normally.
+``cap_h`` hours. Days without a Klassenfahrt entry count normally – unless the
+caller names them in ``trip_days``: days marked as Klassenfahrt as a whole (the day
+type of the "Erfassen" screen) are trip days whatever entries they hold.
 
 The result is the ``ist_by_day`` mapping that :func:`app.core.account.build_ledger`
 expects. Pseudo entries (Krank) must be filtered out by the caller.
@@ -28,21 +30,22 @@ def evaluate_ist(
     entries: Iterable[EntryTuple],
     variante: KlassenfahrtVariante | str = KlassenfahrtVariante.B,
     cap_h: float = DEFAULT_CAP_H,
+    trip_days: Iterable[date] = (),
 ) -> dict[date, int]:
-    """Sum recorded seconds per day, applying the Klassenfahrt variant."""
+    """Sum recorded seconds per day, applying the Klassenfahrt variant (``trip_days``: see module doc)."""
     variante = KlassenfahrtVariante(variante)
     cap = round(cap_h * 3600)
     totals: dict[date, int] = defaultdict(int)
-    trip_days: set[date] = set()
+    trips: set[date] = set(trip_days) if variante is KlassenfahrtVariante.B else set()
 
     for day, duration, flags in entries:
         flags = frozenset(flags or ())
         if variante is KlassenfahrtVariante.B:
             if FLAG_KLASSENFAHRT in flags:
-                trip_days.add(day)
+                trips.add(day)
             if FLAG_NACHTBEREITSCHAFT in flags:
                 totals.setdefault(day, 0)
                 continue
         totals[day] += duration
 
-    return {day: min(s, cap) if day in trip_days else s for day, s in sorted(totals.items())}
+    return {day: min(s, cap) if day in trips else s for day, s in sorted(totals.items())}

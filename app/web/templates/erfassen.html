@@ -13,4 +13,42 @@
 <div class="qe-root" data-qe-root>
   {% include "partials/erfassen_week.html" %}
 </div>
+
+{# Day type sheet (one for all rows, filled by erfassen.js): native modal dialog = focus trap, Escape closes,
+   focus returns to the chip. Bottom sheet on phones, centred box on wider screens. #}
+<dialog class="qe-sheet" id="qe-typ-sheet" aria-labelledby="qe-typ-title" aria-describedby="qe-typ-sub" data-qe-sheet>
+  <div class="qe-sheet-body">
+    <div class="qe-sheet-head">
+      <h2 class="qe-sheet-title" id="qe-typ-title" data-qe-sheet-title>Art des Tages</h2>
+      <button type="button" class="qe-sheet-x" data-qe-sheet-close aria-label="Schließen">{{ icon("x", 22) }}</button>
+    </div>
+    <p class="qe-sheet-sub text-xs text-muted" id="qe-typ-sub">Gilt pauschal für den ganzen Tag. Einzeln erfasste Einträge behalten ihre Kategorie.</p>
+    <p class="qe-sheet-hint text-xs" data-qe-typ-hint hidden></p>
+    <p class="qe-sheet-hint text-xs" data-qe-typ-noyear hidden>Krank und Fortbildung gibt es erst mit Schuljahr –
+      <a href="/kalender/einrichtung">Schuljahr anlegen</a>.</p>
+    <div class="qe-sheet-reason field" data-qe-reason hidden>
+      <label for="qe-typ-reason">Grund der Korrektur <span class="text-danger">*</span></label>
+      <input type="text" id="qe-typ-reason" maxlength="500" autocomplete="off" data-qe-reason-input
+             aria-describedby="qe-typ-reason-hint">
+      <span class="field-hint" id="qe-typ-reason-hint">Der Monat ist abgeschlossen – die Korrektur wird beim Monatsabschluss vermerkt.</span>
+      <span class="field-error" data-qe-reason-error hidden>Bitte einen Grund angeben.</span>
+    </div>
+    <div class="qe-typ-list" data-qe-typ-list>
+      {%- for t in typ_choices %}
+      <button type="button" class="qe-typ-option" data-qe-typ-choice="{{ t.key }}" aria-pressed="false">
+        <span class="qe-typ-text"><span class="qe-typ-name" data-qe-typ-name>{{ t.label }}</span>
+          <span class="qe-typ-desc" data-qe-typ-desc>{{ t.desc }}</span></span>
+        <span class="qe-typ-check" aria-hidden="true">{{ icon("check", 20) }}</span>
+      </button>
+      {%- endfor %}
+    </div>
+    <div class="qe-sheet-confirm" data-qe-confirm hidden>
+      <p class="qe-confirm-text" data-qe-confirm-text role="alert"></p>
+      <div class="qe-confirm-actions">
+        <button type="button" class="btn btn-danger" data-qe-confirm-yes>Krank – Stunden entfernen</button>
+        <button type="button" class="btn btn-ghost" data-qe-confirm-no>Zurück</button>
+      </div>
+    </div>
+  </div>
+</dialog>
 {% endblock %}

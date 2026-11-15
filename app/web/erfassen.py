@@ -8,7 +8,8 @@ Routes (mounted by app.main without prefix, no login):
 With the header ``X-Erfassen-Partial: 1`` only the week block (``partials/erfassen_week.html``) is returned;
 ``static/js/erfassen.js`` uses it to switch weeks without a full page load. Saving goes through
 ``PUT /api/days/{date}/total`` via the offline queue (``static/js/offline-queue.js``); the view model comes
-from :func:`app.services.quick_entry.week_view`.
+from :func:`app.services.quick_entry.week_view`. The day type chip of each row opens one shared sheet
+(``<dialog>`` in ``erfassen.html``, options from :func:`typ_choices`) and saves through ``PUT /api/days/{date}/typ``.
 """
 
 from __future__ import annotations
@@ -62,6 +63,28 @@ def _focus_date(request: Request, monday: date) -> str | None:
     return d.isoformat() if monday <= d <= monday + timedelta(days=6) else None
 
 
+def typ_choices(db: Session) -> list[dict[str, str]]:
+    """The options of the day type sheet (label, one-line explanation)."""
+    from app.services.settings_service import get_settings
+    from app.util import fmt_hm
+
+    settings = get_settings(db)
+    if settings.klassenfahrt_variante == "B":
+        kf = f"Fahrt (SV) – zählt höchstens {fmt_hm(round(float(settings.klassenfahrt_cap_h or 0) * 3600))} h am Tag"
+    else:
+        kf = "Fahrt (SV) – alle Stunden zählen (Variante A)"
+    krank = ("ganzer Tag, ohne Stunden – das Soll wird gutgeschrieben" if settings.krank_neutralisiert
+             else "ganzer Tag, ohne Stunden – ohne Gutschrift (Einstellung)")
+    descriptions = {
+        svc.TYP_UNTERRICHT: "normaler Unterrichtstag",
+        svc.TYP_KRANK: krank,
+        svc.TYP_FORTBILDUNG: "Stunden zählen als Fortbildung (F)",
+        svc.TYP_KLASSENFAHRT: kf,
+        svc.TYP_SCHULVERANSTALTUNG: "Wandertag, Schulfest, Ausflug (SV)",
+    }
+    return [{"key": t, "label": svc.TYP_LABELS[t], "desc": descriptions[t]} for t in svc.DAY_TYPES]
+
+
 def _render(request: Request, db: Session, monday: date) -> HTMLResponse:
     today = today_local()
     try:
@@ -74,6 +97,7 @@ def _render(request: Request, db: Session, monday: date) -> HTMLResponse:
     if request.headers.get(PARTIAL_HEADER) == "1":
         return templates.TemplateResponse(request, "partials/erfassen_week.html", ctx,
                                           headers={"Cache-Control": "no-store", "Vary": "X-Erfassen-Partial"})
+    ctx["typ_choices"] = typ_choices(db)
     return templates.TemplateResponse(request, "erfassen.html", ctx, headers={"Vary": "X-Erfassen-Partial"})
 
 

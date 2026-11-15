@@ -166,3 +166,103 @@
   .qe-timer-dot { animation: none; }
   .qe-root.is-sliding-next .qe-days, .qe-root.is-sliding-prev .qe-days { animation: none; }
 }
+
+/* ---------------------------------------------------------------- day type chip + sheet
+   The chip sits below the weekday's info line: small, quiet when nothing is chosen (outline), coloured once a
+   type is set. Its tap area is larger than the drawn pill (::before). */
+.qe-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 2px;
+  min-height: 26px; padding: 1px 6px 1px 9px; border-radius: var(--radius-pill);
+  font: inherit; font-size: var(--fs-xs); font-weight: 650; line-height: 1.4; white-space: nowrap;
+  border: 1px solid transparent; text-decoration: none; cursor: pointer; max-width: 100%;
+}
+:where(.qe-chip) { background: var(--surface-3); color: var(--text-muted); } /* colours: .qe-badge-<kind> */
+.qe-chip span { overflow: hidden; text-overflow: ellipsis; }
+.qe-chip .icon { flex: none; opacity: 0.8; }
+span.qe-chip { cursor: default; padding-right: 9px; }
+button.qe-chip::before, a.qe-chip::before { content: ""; position: absolute; inset: -8px -4px; }
+button.qe-chip:focus-visible, a.qe-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.qe-chip.qe-badge-unterricht, .qe-chip.qe-badge-wochenende, .qe-chip.qe-badge-frei {
+  background: transparent; border-color: var(--border-strong); color: var(--text-muted);
+}
+button.qe-chip:hover { border-color: var(--primary); color: var(--primary); }
+.qe-chip.is-pending { border-style: dashed; border-color: var(--warn); }
+.qe-badge-sv { background: #e0f2ef; color: #0f6b63; }
+.qe-cap { color: var(--warn); font-weight: 600; }
+
+#qe-week .qe-input:disabled {
+  background: var(--surface-2); border-style: dashed; border-color: var(--border); cursor: not-allowed;
+}
+.qe-day:has(.qe-input:disabled) .qe-field::after {
+  content: "krank"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--danger); pointer-events: none;
+}
+
+.qe-sheet {
+  inset: auto 0 0 0; margin: 0; width: 100%; max-width: 100%; max-height: min(88dvh, 640px);
+  padding: 0; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); overflow-y: auto;
+}
+.qe-sheet[open] { animation: qe-sheet-in 160ms ease-out; }
+@keyframes qe-sheet-in { from { transform: translateY(24px); opacity: 0.6; } }
+.qe-sheet::backdrop { background: rgb(10 14 20 / 0.55); }
+.qe-sheet-body {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+}
+.qe-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.qe-sheet-title { font-size: var(--fs-md); font-weight: 700; min-width: 0; }
+.qe-sheet-x {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 44px; height: 44px; margin-right: calc(-1 * var(--space-2)); border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.qe-sheet-x:hover { background: var(--surface-2); color: var(--text); }
+.qe-sheet-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.qe-typ-list { display: flex; flex-direction: column; gap: 6px; }
+.qe-typ-list[hidden], .qe-sheet-confirm[hidden], .qe-typ-option[hidden] { display: none; }
+.qe-typ-option {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 56px;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.qe-typ-option:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.qe-typ-option:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.qe-typ-option.is-current { border-color: var(--primary); background: var(--primary-soft); }
+.qe-typ-text { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.qe-typ-name { font-weight: 650; line-height: 1.3; }
+.qe-typ-desc { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.35; }
+.qe-typ-check { flex: none; display: inline-flex; color: var(--primary); visibility: hidden; }
+.qe-typ-option.is-current .qe-typ-check { visibility: visible; }
+.qe-sheet-confirm { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-1); }
+.qe-confirm-text { font-size: var(--fs-sm); line-height: 1.45; }
+.qe-confirm-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.qe-confirm-actions .btn { min-height: 48px; width: 100%; }
+
+@media (min-width: 640px) {
+  .qe-sheet { inset: 0; margin: auto; width: min(440px, calc(100vw - 2 * var(--gutter)));
+    border-bottom: 1px solid var(--border); border-radius: var(--radius-lg); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .qe-badge-sv { background: #133631; color: #5eead4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qe-sheet[open] { animation: none; }
+}
+#qe-week .qe-input:disabled::placeholder { color: transparent; }
+
+/* Krank rows: the info line wraps instead of being clamped – "+ 2:00 erfasst, zählt zusätzlich" must stay
+   readable on a phone (360 px). */
+.qe-day.is-krank .qe-meta { display: block; -webkit-line-clamp: unset; overflow: visible; }
+
+/* Sheet: hint lines, greyed-out options (no school year yet), reason of a correction in a closed month. */
+.qe-sheet-hint { margin: 0 0 var(--space-2); color: var(--text-muted); line-height: 1.4; }
+.qe-sheet-hint[hidden], .qe-sheet-reason[hidden] { display: none; }
+.qe-sheet-reason { margin-bottom: var(--space-3); }
+.qe-typ-option:disabled { opacity: .55; cursor: not-allowed; }
+.qe-typ-option:disabled:hover { border-color: var(--border); background: transparent; }
+
+/* "auch für Di–Fr übernehmen" after choosing Klassenfahrt/Krank */
+.qe-status .qe-follow { min-height: 32px; padding: 0 var(--space-2); font-size: var(--fs-xs); vertical-align: baseline; }

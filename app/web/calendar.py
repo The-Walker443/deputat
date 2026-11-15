@@ -47,7 +47,7 @@ from app.db.session import get_db
 from app.security import safe_redirect_target
 from app.services import calendar_service as cal
 from app.services import settings_service as settings_svc
-from app.util import today_local
+from app.util import fmt_hm, today_local
 from app.web.templating import MONTHS, flash, templates
 
 log = logging.getLogger("app.web.calendar")
@@ -283,7 +283,7 @@ def _month_view(db: Session, period: Period, year: int, month: int, today: date)
                 cell.note = row.note
                 if row.ferien_id and row.ferien_id in ferien:
                     cell.ferien_name = ferien[row.ferien_id].name
-            if ov is not None:
+            if cal.has_calendar_input(ov):
                 cell.has_override = True
                 cell.urlaub_manuell = bool(ov.urlaub_manuell)
                 cell.note = ov.note or cell.note
@@ -756,10 +756,19 @@ def _day_ctx(db: Session, d: date) -> dict[str, Any]:
                 TimeEntry.category_id == f_cat.id,
             )
         ) or 0)
+    from app.services import quick_entry  # local import: quick_entry reads calendar data
+
+    ts = quick_entry.day_state(db, d).tagessumme
     ctx.update(
         day=d,
         row=row,
         override=override,
+        # "Erfassen": day type (Klassenfahrt/Schulveranstaltung are not calendar inputs, shown read-only) and the
+        # day's Tagessumme, which Krank removes (hint next to the absence select)
+        erfassung_typ=override.erfassung_typ if override is not None else None,
+        erfassung_typ_label=quick_entry.TYP_LABELS.get(override.erfassung_typ or "") if override is not None else None,
+        tagessumme_seconds=int(ts.duration_seconds or 0) if ts is not None and ts.tagessumme else 0,
+        erfassen_url=f"/erfassen/{quick_entry.week_ref(d)}",
         ferien_name=ferien_name,
         fortbildung_category_id=f_cat.id if f_cat is not None else None,
         fortbildung_seconds=f_seconds,
@@ -792,12 +801,20 @@ async def save_day(day: str, request: Request, db: Session = Depends(get_db)) ->
     form = await request.form()
     period = cal.period_for_date(db, d)
     back = f"/kalender?periode={period.id}&monat={_ym(d)}" if period else "/kalender"
+    removed = 0
     try:
         if form.get("aktion") == "entfernen":
             if cal.get_override(db, d) is not None:
                 cal.delete_override(db, d)
             flash(request, f"Eingaben für den {cal.fmt_date_de(d)} entfernt.", "success")
             return _redirect(back)
+        if str(form.get("absence_type") or "") == AbsenceType.KRANK.value:
+            from app.services import quick_entry
+
+            current = cal.get_override(db, d)
+            ts = quick_entry.day_state(db, d).tagessumme
+            if (current is None or current.absence_type != AbsenceType.KRANK.value) and ts is not None and ts.tagessumme:
+                removed = int(ts.duration_seconds or 0)
         cal.set_override(
             db, d,
             absence_type=str(form.get("absence_type") or "") or None,
@@ -810,9 +827,12 @@ async def save_day(day: str, request: Request, db: Session = Depends(get_db)) ->
         flash(request, str(exc), "danger")
         return _redirect(f"/kalender/tag/{d.isoformat()}")
     flash(request, f"{cal.fmt_date_de(d)} gespeichert.", "success")
+    if removed:
+        flash(request, f"Krank: Die auf „Erfassen“ eingetragenen {fmt_hm(removed)} h wurden entfernt (Tag ohne "
+                       "Stunden). Einzeln erfasste Einträge bleiben und zählen zusätzlich.", "info")
     if str(form.get("absence_type") or "") == AbsenceType.FORTBILDUNG.value:
-        flash(request, "Fortbildung: Das Soll bleibt. Bitte die Fortbildungszeit zusätzlich als Eintrag "
-                       "„Fortbildung“ (F) erfassen – sonst zählt der Tag mit 0 Stunden.", "warn")
+        flash(request, "Fortbildung: Das Soll bleibt. Die Stunden auf „Erfassen“ eintragen (sie zählen dort als "
+                       "Fortbildung, F) – sonst zählt der Tag mit 0 Stunden.", "warn")
         return _redirect(f"/kalender/tag/{d.isoformat()}")
     if period is not None and settings_svc.get_settings(db).urlaubs_modus == LeaveMode.MANUELL.value:
         info = _leave_info(db, period)

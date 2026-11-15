@@ -92,8 +92,8 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
   gestoppt, wird normal geteilt. Später (oder an einem späteren Tag) wird er automatisch um 24:00 des Starttags
   beendet, mit dem Hinweis, spätere Arbeitszeit nachzutragen. Laufzeit > 6 h erzeugt einen Hinweis.
 - **Krankheit** (Einstellung *Krankheit neutralisiert das Soll*, Standard an):
-  - Ganzer Krankheitstag (im Kalender als *krank* markiert): `Ist := erfasste Zeit + Tages-Soll` – das Konto
-    bleibt unverändert (T10). **Entscheidung:** Wird an einem ganz krank gemeldeten Tag trotzdem etwas erfasst,
+  - Ganzer Krankheitstag (im Kalender oder auf *Erfassen* über den Tagestyp als *krank* markiert, siehe §4a):
+    `Ist := erfasste Zeit + Tages-Soll` – das Konto bleibt unverändert (T10). **Entscheidung:** Wird an einem ganz krank gemeldeten Tag trotzdem etwas erfasst,
     zählt es zusätzlich.
   - Teilweise krank: Eintrag in der Sonderkategorie **„Krank (Teil)“** (Code KR). Diese Zeit füllt nur die
     Lücke bis zum Soll auf: Gutschrift = min(KR-Zeit, max(0, Soll − erfasste Arbeit)). Sie erzeugt nie ein Plus
@@ -101,7 +101,12 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
   - Einstellung aus: keine Gutschrift, Krankheitstage bauen das Konto ab.
 - **Tagessumme** von der Startseite *Erfassen*: ein normaler Eintrag ohne Zeitgrenzen, siehe §4a.
 - **Klassenfahrt** (Einstellung *Klassenfahrt-Bewertung*, Standard B): Betrifft jeden Tag mit mindestens einem
-  Eintrag mit Kennzeichen *Klassenfahrt*.
+  Eintrag mit Kennzeichen *Klassenfahrt* **und jeden Tag, der auf *Erfassen* den Tagestyp *Klassenfahrt* hat**
+  (`day_override.erfassung_typ`, §4a). **Entscheidung:** Der Typ markiert den ganzen Tag als Fahrtag – die Regel
+  bewertet ohnehin den Tag („Summe **aller** übrigen Einträge des Tages“), nicht den einzelnen Eintrag. Damit hängt
+  die Kappung nicht daran, ob gerade eine Tagessumme (mit Kennzeichen) existiert: Eine Fahrt, die nur mit Timer
+  oder unter *Einträge* erfasst ist, wird genauso gekappt, und die Kappung bleibt, wenn die Tagessumme wegfällt,
+  weil die Eingabe der Summe der Einzeleinträge entspricht.
   - Variante A: alle Einträge inkl. *Nachtbereitschaft*.
   - Variante B: Einträge mit *Nachtbereitschaft* fallen weg, die Tagessumme **aller** übrigen Einträge des Tages
     wird auf die eingestellte Kappung (Standard 10 h) begrenzt. Kategorie-Statistiken werden auf derselben Basis
@@ -111,7 +116,8 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
 
 ## 4a. Tagessumme (Startseite „Erfassen“)
 
-`app/services/quick_entry.py`, API `PUT /api/days/{datum}/total`, `GET /api/weeks/{JJJJ-Www}`.
+`app/services/quick_entry.py`, API `PUT /api/days/{datum}/total`, `PUT /api/days/{datum}/typ`,
+`GET /api/weeks/{JJJJ-Www}`.
 
 - **Anzeige:** Das Feld eines Tages zeigt die **gesamte erfasste Arbeitszeit** des Tages = Summe aller aktiven, nicht
   gelöschten, abgeschlossenen Einträge (Timer, manuell, Import, bestätigter Stundenplan), auf Minuten gerundet. Ein
@@ -125,7 +131,8 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
   7:30) und Werte über 59 (`7,75` = 7:45). Die Zeile zeigt nach dem Speichern, wie die Eingabe gelesen wurde
   („7,25 = 7:15 h“). `730` wird abgelehnt mit „Meintest du 7:30?“. Auf ganze Minuten gerundet, höchstens die Länge
   des Tages (24 h, an den Umstellungstagen 23 h bzw. 25 h); leer oder `0` = nichts erfasst. Eine Eingabe setzt die **Tagessumme**: Die App führt je Tag genau einen Eintrag
-  *ohne Zeitgrenzen* (Quelle *manuell*, Kategorie **AZ – Arbeitszeit (pauschal, nicht aufgeschlüsselt)**, kein
+  *ohne Zeitgrenzen* (Quelle *manuell*, gekennzeichnet als Tagessumme – Spalte `time_entry.tagessumme`, Migration
+  0006 –, Kategorie nach Tagestyp, ohne Typ **AZ – Arbeitszeit (pauschal, nicht aufgeschlüsselt)**, kein
   Unterricht) mit `Dauer = Eingabe − Summe aller anderen Einträge des Tages`.
   - Verglichen wird in ganzen Minuten wie angezeigt: Wer durch einen Tag mit sekundengenauen Timer-Einträgen nur
     „durchtippt“, ändert nichts (kein Mini-Eintrag, kein Fehler).
@@ -145,27 +152,113 @@ Stundenplan-Vorschläge zählen erst nach Bestätigung. Ein laufender Timer zäh
     zählen zusätzlich: 8 h eingetragen, danach 5 h Stundenplan bestätigt → 13 h. Die App ändert die Tagessumme dann
     **nicht stillschweigend**, sondern fragt in der Zeile einmal nach: „Auf 8:00 zurück“ (die Tagessumme schrumpft
     auf den Rest bzw. entfällt) oder „13:00 stimmt“ (bestätigt, ohne Revision; die Frage verschwindet).
-  - Gibt es mehrere passende AZ-Einträge ohne Zeitgrenzen (z. B. von Hand angelegt), ist der neueste die Tagessumme,
-    die anderen zählen als Einzeleinträge.
+  - **Welcher Eintrag die Tagessumme ist**, steht seit Migration 0006 am Eintrag selbst (`tagessumme`), weil ihre
+    Kategorie jetzt AZ, F oder SV sein kann. Ein Eintrag ohne Zeitgrenzen in F oder SV aus *Einträge → Neu* ist nie
+    die Tagessumme. Ungekennzeichnete AZ-Einträge ohne Zeitgrenzen (Quelle *manuell*, ohne Unterkategorie – z. B. von
+    Hand angelegt oder aus einer Sicherung vor 0006) gelten weiter als Tagessumme, solange es keine gekennzeichnete
+    gibt (alte Regel), und werden beim nächsten Schreiben **eines Werts** gekennzeichnet. **Entscheidung:** Ein
+    Typwechsel, eine Kalenderänderung oder ein wiederholter Tipp auf denselben Typ stellt nur *gekennzeichnete*
+    Tagessummen um – ein von Hand angelegter AZ-Eintrag wird nie stillschweigend zu F/SV (nur *Krank* auf dem Chip,
+    das die Stunden vorher mit Rückfrage nennt, entfernt auch ihn). Gibt es mehrere Kandidaten, ist der
+    neueste gekennzeichnete (sonst der neueste) die Tagessumme, die anderen zählen als Einzeleinträge. Wird eine
+    Tagessumme unter *Einträge* auf eine andere Kategorie umgestellt oder bekommt sie Uhrzeiten, ist sie ab dann ein
+    normaler Eintrag. Unter *Einträge* trägt die Tagessumme die Plakette „Tagessumme (Erfassen)“; ihre
+    Bearbeiten-Seite sagt, dass Uhrzeiten oder eine andere Kategorie sie vom Feld lösen. **Entscheidung:** Kennzeichen als eigene Spalte und nicht als Eintrags-Kennzeichen (`flags`):
+    `flags` gehen in den Prüf-Hash ein, das Kennzeichnen der vorhandenen Tagessummen hätte die Hashes abgeschlossener
+    Monate verändert. Migration 0006 kennzeichnet je Tag den neuesten Eintrag nach der alten Regel (Kategorie AZ,
+    ohne Unterkategorie, ohne Zeitgrenzen, Quelle *manuell*, aktiv, nicht gelöscht); JSON-Sicherungen von vor 0006
+    werden nach dem Einspielen genauso gekennzeichnet.
 - **Beweiskraft:** Eine Tagessumme ist bewusst als pauschal gekennzeichnet (Kategorie AZ, *ohne Zeitgrenzen*, keine
   Uhrzeiten) und hat damit **geringere Beweiskraft** als Einträge mit Von–Bis. Alle übrigen Regeln gelten unverändert:
   Revisionen bei jeder Änderung, *nachträglich* bei Anlage **oder Änderung des Werts** mehr als 48 h nach Tagesende
   (§7; sonst ließe sich ein früh angelegter Wert später unbemerkt ändern), abgeschlossene Monate
   nur mit Begründung (im UI schreibgeschützt; Korrektur über *Einträge*), Prüf-Hash wie jeder andere Eintrag.
-  Kategorie-Statistiken weisen AZ als eigene Kategorie aus; der Unterrichtsanteil sinkt entsprechend.
+  Kategorie-Statistiken weisen AZ als eigene Kategorie aus; der Unterrichtsanteil sinkt entsprechend (Tagessummen
+  mit Typ Fortbildung/Klassenfahrt/Schulveranstaltung zählen unter F bzw. SV).
 - **Wochenzeile:** „Woche“ ist die Konto-Ist-Zeit (inkl. Krank-Gutschrift), „Saldo bis gestern/heute“ zählt den
   heutigen Tag erst, sobald für ihn etwas erfasst ist (kein rotes −8:00 am Morgen). In einer Woche über eine
   Periodengrenze (z. B. 31.07.–06.08.) kommen Soll und Tagestyp jedes Tages aus seiner eigenen Periode. Solange ein
   Wert noch in der Warteschlange liegt, rechnet die Seite die Summen vorläufig auf dem Gerät („vorläufig“).
   Das Kennzeichen *nachträglich* steht in Einträgen, Export und Bericht, aber nicht als Plakette auf *Erfassen*
   (wer einmal pro Woche einträgt, soll nicht jede Zeile gerügt sehen).
-- **Tagestypen:** An Urlaubs-, Feiertags- und Wochenendtagen funktioniert das Feld normal (Arbeit zählt). An ganzen
-  Krankheitstagen (mit *Krankheit neutralisiert das Soll*) zeigt die Zeile „krank – zählt wie Soll“; erfasste Arbeit
-  zählt zusätzlich (§4). Tage vor *Erfassung ab* sind neutral. Künftige Tage sind erlaubt.
-- **Entscheidung:** Die Kategorie der Tagessumme ist fest AZ und nicht einstellbar: Nur so bleibt eindeutig, welcher
-  Eintrag die Tagessumme ist, und eine Tagessumme wird nie mit echten, kategorisierten Einträgen vermischt. AZ kann
-  umbenannt und umgefärbt, aber weder deaktiviert noch mit Notiz-Pflicht versehen werden (sonst wäre die Startseite
-  unbenutzbar).
+- **Kalendertage:** An Urlaubs-, Feiertags- und Wochenendtagen funktioniert das Feld normal (Arbeit zählt). Tage vor
+  *Erfassung ab* sind neutral. Künftige Tage sind erlaubt.
+- **Tagestyp** (Chip unter dem Wochentag, `PUT /api/days/{datum}/typ` mit `typ`, optional `at`, `client_action_id`,
+  `reason`). Er gilt pauschal für den ganzen Tag und bestimmt die Kategorie der Tagessumme:
+
+  | Typ | Stundenfeld | Gespeichert als | Tagessumme |
+  |---|---|---|---|
+  | Unterricht (Standard) | normal | – | AZ |
+  | Krank | gesperrt, ohne Stunden | Kalender-Abwesenheit *krank* (`day_override.absence_type`) | wird entfernt |
+  | Fortbildung | normal | Kalender-Abwesenheit *fortbildung* | F |
+  | Klassenfahrt | normal | `day_override.erfassung_typ = klassenfahrt` | SV + Kennzeichen *Klassenfahrt* |
+  | Schulveranstaltung | normal | `day_override.erfassung_typ = schulveranstaltung` | SV |
+
+  - Das Auswahlblatt heißt „Art des Tages“ (der Kalender hat einen eigenen „Tagestyp“: Schultag/Ferientag/
+    unterrichtsfrei). Ohne gewählten Typ zeigt der Chip die Art des Tages aus dem Kalender (Ferien, Feiertag,
+    Wochenende, Unterrichtsfrei). Im Kalender **eingetragene** Abwesenheiten – *Dienstbefreiung*, *Sonderurlaub*,
+    *Elternzeit* und von Hand zugeordneter *Urlaub* (`urlaub_manuell`) – zeigt er nur an und verlinkt auf den
+    Kalendertag; ein Typwechsel wird dort abgelehnt (409). **Entscheidung:** Urlaub, den die automatische
+    Urlaubszuordnung auf den Tag gelegt hat (z. B. Buß- und Bettag oder Ferientage im Standardmodus), ist keine
+    Eingabe: Der Chip zeigt „Urlaub (autom.)“ und bleibt wählbar. *Krank* und *Fortbildung* verschieben den
+    Urlaubstag auf einen anderen Kandidaten – genau wie dieselbe Eingabe im Kalender (§3).
+  - Außerhalb eines Schuljahrs stehen *Krank* und *Fortbildung* ausgegraut im Blatt („erst mit Schuljahr“, mit Link
+    zur Einrichtung), statt kommentarlos zu fehlen. Die Tastatur springt mit Tab von Feld zu Feld (der Chip liegt
+    nicht in der Tab-Reihenfolge); Alt+Pfeil runter im Feld öffnet das Blatt.
+  - Nach *Klassenfahrt* oder *Krank* bietet die Zeile einmal „auch für Di–Fr übernehmen“ an (folgende Werktage der
+    Woche, solange sie noch Unterricht sind, offen und ohne Stunden, die Krank entfernen würde).
+  - Der Typ lässt sich **vor den Stunden** wählen und bleibt gespeichert (eigene Spalte, unabhängig vom Eintrag).
+  - **Wechsel ändert nur den Pauschalanteil** (Entscheidung): Kategorie und Kennzeichen *Klassenfahrt* der Tagessumme
+    werden mit Revision umgestellt, der Wert und sein Änderungszeitpunkt (für „veraltet“ und die Rückfrage nach
+    später erfassten Einträgen) bleiben. Einzeln erfasste Einträge behalten ihre Kategorie. Zurück auf Unterricht
+    = AZ ohne Kennzeichen.
+  - **Krank:** setzt die Abwesenheit *krank* über den Kalender-Service (Sperren, Urlaubszuordnung, Neuberechnung) –
+    Konto (§4), Kalender, Berichte und Erinnerungen bleiben dadurch einheitlich. Eine vorhandene Tagessumme wird
+    gelöscht (ausgeblendet, Revision „Tag als krank markiert“); die Seite fragt vorher mit einem Tipp nach, wenn
+    dabei mehr als 0 Stunden wegfallen. Einzeln erfasste Einträge bleiben und zählen zusätzlich, die Zeile sagt das.
+    Die Zeile zeigt „krank – Soll wird gutgeschrieben“ bzw. „ohne Gutschrift (Einstellung)“. An Wochenenden und
+    Feiertagen (kein Soll) und außerhalb eines Schuljahrs wird *Krank* nicht angeboten bzw. abgelehnt (422). Über die
+    API bleibt eine Stundeneingabe an einem Krankheitstag möglich (zählt zusätzlich, wie bisher); kommt aber ein
+    zwischengespeicherter Wert an, der *vor* dem Wechsel auf Krank eingegeben wurde, wird er verworfen („veraltet“).
+  - **Krank im Kalender – Entscheidung: wirkt wie Krank auf dem Chip.** Wird *krank* im Kalender gesetzt (Tag oder
+    Zeitraum einer Krankmeldung, Formular oder API), wird die Tagessumme des Tages genauso entfernt (Revision „Tag als
+    krank markiert“) und ein Klassenfahrt-/Schulveranstaltungs-Typ gelöscht. Sonst zählte sie zusätzlich zum
+    gutgeschriebenen Soll, während das Feld auf *Erfassen* gesperrt und leer ist. Der Kalendertag nennt vorher die
+    Stunden, die Krank entfernt; nach dem Speichern sagt eine Meldung, was entfernt wurde. In einem abgeschlossenen
+    Monat gilt die Kalender-Sperre (ohne Begründung 423, mit Begründung steht sie auch in der Revision).
+  - **Fortbildung – Entscheidung: setzt die Kalender-Abwesenheit *fortbildung*.** Geprüft, was sie bewirkt: Soll
+    bleibt (§2); kein Urlaubskandidat (§3 – ein Fortbildungstag in den Ferien ist kein Urlaubstag, der Urlaubstag
+    rutscht weiter); keine Stundenplan-Vorschläge für den Tag (man unterrichtet nicht); Erinnerung „Tag ohne
+    Eintrag“ und offene Punkte im Monatsabschluss gelten weiter (Fortbildung braucht Zeit); der Tag fällt aus der
+    Prognose-Stichprobe (kein typischer Schultag); EU-Mittel: nicht neutral. Der Kalendertag zeigt „Fb“ und die
+    erfasste Fortbildungszeit (= die F-Tagessumme). Wird *Fortbildung* im Kalender gesetzt oder entfernt, zieht
+    die Kategorie einer vorhandenen Tagessumme nach (F bzw. AZ); „Eingaben entfernen“ im Kalender lässt einen
+    Klassenfahrt-/Schulveranstaltungs-Typ stehen (er ist keine Kalenderangabe).
+  - **Klassenfahrt:** Der Typ macht den Tag zum Fahrtag (§4) – auch wenn die Stunden nur aus Einzeleinträgen
+    kommen –, die Tagessumme bekommt zusätzlich das Kennzeichen *Klassenfahrt*. Bei Variante B zeigt die Zeile
+    „zählt 10:00“ (bzw. weniger, wenn *Nachtbereitschaft* wegfällt), sobald das Konto weniger zählt als eingetragen;
+    der Wert kommt aus dem Konto selbst, Hinweis und Konto stimmen also immer überein.
+  - **Deaktivierte Kategorien / Notiz-Pflicht – Entscheidung:** Schreibvorgänge der Tagessumme prüfen bei F und SV
+    weder „aktiv“ noch die Notiz-Pflicht (der Typ ist eine bewusste Wahl, die Tagessumme hat keine Notiz). Für das
+    Eintragsformular gelten beide Regeln unverändert. AZ bleibt geschützt: umbenennen und umfärben ja, aber weder
+    deaktivieren noch Notiz-Pflicht.
+  - **Abgeschlossene Monate:** wie bei den Stunden – ohne Begründung 423, mit Begründung Korrektur mit Revision,
+    *korrigiert* und „nachträglich korrigiert“ am Monat. Der Chip bleibt antippbar; das Blatt verlangt dann einen
+    „Grund der Korrektur“ (Pflichtfeld) und schickt ihn mit – so lassen sich auch Klassenfahrt und
+    Schulveranstaltung in einem abgeschlossenen Monat nachtragen.
+  - **Offline:** Typwechsel laufen über dieselbe Warteschlange (je Tag zusammengefasst, vor einer danach eingegebenen
+    Stundenzahl), mit Gerätezeit `at`: Ein verspäteter Wechsel, der älter ist als der zuletzt gespeicherte
+    (`day_override.erfassung_typ_at`), wird verworfen („veraltet“). Auch der Kalender setzt diesen Zeitpunkt, wenn er
+    *Krank*/*Fortbildung* setzt oder (bei einer Zeile, die bleibt) entfernt – ein älterer Chip-Wechsel oder Stundenwert
+    aus der Warteschlange überschreibt die neuere Krankmeldung also nicht. Die Warteschlange schickt die Gerätezeit
+    des Sendens mit (`X-Sent-At`); der Server misst damit die Wartezeit auf derselben Uhr, eine einige Minuten
+    falsch gehende Geräteuhr macht eine Live-Anfrage nicht zur „verspäteten“. Bis zur Übertragung rechnet die Seite die
+    Wochensumme vorläufig (Krank: Einzeleinträge + gutgeschriebenes Soll; Klassenfahrt: ohne Nachtbereitschaft
+    gekappt), auch die Zeile „inkl. … h Krank-Gutschrift“, und die Infozeile beschreibt schon den neuen Typ.
+  - **Kalender und Erfassen:** Der Kalendertag zeigt einen Klassenfahrt-/Schulveranstaltungs-Typ als Hinweis (er ist
+    keine Kalenderangabe). Kalenderänderungen und Schreibvorgänge auf *Erfassen* laufen unter derselben Sperre, damit
+    eine gleichzeitige Stundeneingabe nicht mit dem Typ von vor der Kalenderänderung schreibt. Das Übernehmen eines
+    Urlaubsplans lässt den Typ eines Tages stehen.
 - **Einrichtung:** Wird ein Schuljahr mitten im Jahr angelegt und gibt es davor noch keine Einträge, setzt die App
   *Erfassung ab* auf heute (änderbar im letzten Einrichtungsschritt) – sonst stünde das Konto eines neuen Nutzers
   sofort bei z. B. −288 h. „Fertig“ im Einrichtungsassistenten speichert das angezeigte Datum und führt zu *Erfassen*.

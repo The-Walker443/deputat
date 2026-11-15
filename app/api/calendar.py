@@ -255,6 +255,7 @@ class OverrideOut(_Out):
     day_type: str | None
     urlaub_manuell: bool
     note: str | None
+    erfassung_typ: str | None = None  # day type of the "Erfassen" screen (klassenfahrt | schulveranstaltung)
 
 
 class FerienLeaveOut(BaseModel):

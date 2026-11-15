@@ -88,7 +88,7 @@ def test_fortbildung_day_prompts_for_the_entry(client, db):
     page = client.get(f"/kalender/tag/{d.isoformat()}").text
     assert "Noch keine Fortbildungszeit erfasst" in page
     assert f"kategorie={cat(db, 'F').id}" in page
-    assert "zusätzlich als Eintrag" in page  # the flash
+    assert "Stunden auf „Erfassen“ eintragen" in page  # the flash
 
 
 # --------------------------------------------------------------------------- first open of the day

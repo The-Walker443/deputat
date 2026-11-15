@@ -33,7 +33,7 @@ Einstellungen.
 
 | Bereich | Was er kann |
 |---|---|
-| **Erfassen** (Startseite) | Die schnellste Art zu erfassen: eine Woche Mo–So, je Tag ein großes Feld für die **Stunden des Tages** (`8`, `7,5` oder `7,30` = 7 Std. 30 Min.; leer = nichts erfasst). Speichert beim Verlassen des Feldes bzw. mit Enter, Enter springt zum nächsten Tag – eine ganze Woche ist in Sekunden eingetragen. Wochen wechseln per Pfeil, Wischen oder „Diese Woche“. Je Tag Ferien/Feiertag/Urlaub/Krank-Hinweis und Soll, oben die Wochensumme gegen das Soll mit Saldo. Funktioniert **offline** (Werte werden auf dem Gerät gespeichert und nachgereicht). Abgeschlossene Monate sind nur lesbar (Korrektur über *Einträge* mit Begründung). |
+| **Erfassen** (Startseite) | Die schnellste Art zu erfassen: eine Woche Mo–So, je Tag ein großes Feld für die **Stunden des Tages** (`8`, `7,5` oder `7,30` = 7 Std. 30 Min.; leer = nichts erfasst). Speichert beim Verlassen des Feldes bzw. mit Enter, Enter springt zum nächsten Tag – eine ganze Woche ist in Sekunden eingetragen. Wochen wechseln per Pfeil, Wischen oder „Diese Woche“. Unter jedem Wochentag ein kleiner **Typ** („Unterricht ▾“; an anderen Tagen die Art aus dem Kalender: Ferien, Feiertag, Wochenende, Unterrichtsfrei, Urlaub …): antippen und für den ganzen Tag **Krank** (ohne Stunden, das Soll wird gutgeschrieben), **Fortbildung**, **Klassenfahrt** (mit Kappung) oder **Schulveranstaltung** wählen. Je Tag Soll und Hinweise, oben die Wochensumme gegen das Soll mit Saldo. Funktioniert **offline** (Werte werden auf dem Gerät gespeichert und nachgereicht). Abgeschlossene Monate sind nur lesbar (Stunden korrigieren über *Einträge*, den Typ über das Auswahlblatt – jeweils mit Begründung). |
 | **Timer** | Großer Start/Stopp-Knopf, Kategorie-Chips (Wechsel mit einem Tipp), *Pause* / *Weiter*, optional Klasse, Fach, Ort. Kacheln: Ist heute, Soll heute, Saldo gesamt, Woche Ist/Soll, nächste Ferien mit Abbau-Kapazität. Stundenplan-Vorschläge mit „Tag wie geplant“. Funktioniert **offline**: Timer-Aktionen werden auf dem Gerät gespeichert und später in der richtigen Reihenfolge übertragen – maßgeblich ist immer die Uhrzeit des Tipps, nicht die der Übertragung. |
 | **Einträge** | Alle Einträge mit Filter; *Neu* bzw. *Nachtragen* mit Von–Bis oder „Nur Dauer“. Jede Änderung erzeugt eine **Revision** (Verlauf je Eintrag einsehbar), Löschen ist nur ein Ausblenden und lässt sich wiederherstellen. |
 | **Stundenplan** | Wochenraster mit Zeitraster der Schule, Versionen mit Gültigkeit (Halbjahreswechsel). Für jeden Schultag entstehen Vorschläge, die erst nach Bestätigung zählen; einzelne Stunden lassen sich unter *Offene Tage* (`/tage`) bzw. pro Tag (`/tag/<datum>`, auch aus der Woche und den Hinweisen erreichbar) auf *entfallen*, *Vertretung gehalten*, *Exkursion* oder *Zeit angepasst* setzen. |
@@ -121,9 +121,11 @@ höchstens 40 h ab. Wenn sie wie zuletzt 12 h in den Ferien arbeitet, kommt sie 
 
 ### Krankheit
 
-- **Ganzer Tag:** im *Kalender* den Tag (oder einen Zeitraum) auf *krank* setzen. Standard: Das Konto bleibt
-  unverändert (Einstellung *Krankheit neutralisiert das Soll*). Wird an einem solchen Tag trotzdem etwas erfasst,
-  zählt es zusätzlich.
+- **Ganzer Tag:** auf *Erfassen* beim Tag den Typ **Krank** wählen (oder im *Kalender* den Tag bzw. einen
+  Zeitraum auf *krank* setzen – beides ist dasselbe). Standard: Das Konto bleibt unverändert (Einstellung
+  *Krankheit neutralisiert das Soll*). Das Stundenfeld ist dann gesperrt; eine schon eingetragene Tagessumme wird
+  entfernt (auf *Erfassen* nach einer Rückfrage, im *Kalender* mit Hinweis vorab). Einzeln erfasste Einträge (Timer,
+  *Einträge*) bleiben und zählen zusätzlich.
 - **Halber Tag:** einen Eintrag mit der Kategorie **„Krank (Teil)“** anlegen (z. B. 3:00). Diese Zeit füllt nur
   die Lücke bis zum Tages-Soll auf, erzeugt nie ein Plus und taucht in keiner Kategorie-Statistik auf.
 - Ein Krankheitstag in den Ferien ist kein Urlaubstag – der Urlaubstag rutscht automatisch auf den nächsten
@@ -132,7 +134,10 @@ höchstens 40 h ab. Wenn sie wie zuletzt 12 h in den Ferien arbeitet, kommt sie 
 ### Klassenfahrt
 
 Die echte Dienstzeit erfassen (z. B. 07:00–22:30) mit Kennzeichen *Klassenfahrt*, die Nachtbereitschaft als
-eigenen Eintrag mit Kennzeichen *Nachtbereitschaft*. Die App rechnet zwei Varianten:
+eigenen Eintrag mit Kennzeichen *Nachtbereitschaft*. Schneller: auf *Erfassen* beim Tag den Typ **Klassenfahrt**
+wählen und die Stunden eintragen – die Tagessumme bekommt Kategorie *SV* und das Kennzeichen *Klassenfahrt*, die
+Zeile zeigt „zählt 10:00“, wenn das Konto weniger zählt als eingetragen. Der Typ macht den ganzen Tag zum Fahrtag:
+auch Stunden aus Timer oder *Einträge* werden dann gekappt. Die App rechnet zwei Varianten:
 
 - **Variante A:** alle Stunden inklusive Nachtbereitschaft.
 - **Variante B** (Standard, vorsichtig): ohne Nachtbereitschaft, und jeder Fahrttag wird auf **10 h** gekappt
@@ -248,7 +253,7 @@ wiederhergestellten Einträge und lehnt die ganze Wiederherstellung ab, wenn ein
 **Muss ich jede Tätigkeit einzeln erfassen?**
 Nein. Am einfachsten trägst du auf der Startseite *Erfassen* nur die **Stunden pro Tag** ein – das ist besser, als gar
 nicht zu erfassen. Die App legt dafür je Tag genau einen Eintrag „Tagessumme“ an (Kategorie *AZ – Arbeitszeit
-(pauschal, nicht aufgeschlüsselt)*, ohne Uhrzeiten). Hast du an einem Tag schon einzelne Einträge (Timer,
+(pauschal, nicht aufgeschlüsselt)*, ohne Uhrzeiten; bei Typ Fortbildung *F*, bei Klassenfahrt/Schulveranstaltung *SV*). Hast du an einem Tag schon einzelne Einträge (Timer,
 Stundenplan, Import, *Einträge → Neu*), zeigt das Feld die Gesamtzeit des Tages; eine neue Zahl ändert nur den
 pauschalen Rest – weniger als die einzeln erfassten Stunden geht nicht. Kommen nach deiner Tagessumme noch einzelne
 Einträge dazu (z. B. ein gestoppter Timer), fragt die Zeile einmal: zurück auf deine Zahl oder die neue Summe
@@ -256,6 +261,24 @@ Einträge dazu (z. B. ein gestoppter Timer), fragt die Zeile einmal: zurück auf
 und Kategorie sind besser (Unterrichtsanteil, Mehrarbeit, Kategorie-Statistik); pauschale Tagessummen tragen das
 Kennzeichen *ohne Zeitgrenzen* und später erfasste zusätzlich *nachträglich*. Details:
 [docs/RECHENREGELN.md](docs/RECHENREGELN.md#4a-tagessumme-startseite-erfassen).
+
+**Wofür ist der kleine „Unterricht ▾“ unter jedem Tag?**
+Das ist der **Typ** des Tages, gilt pauschal für den ganzen Tag und ist ohne Zutun ein normaler Unterrichtstag (an
+Ferien-, Feier- und Wochenendtagen steht dort die Art aus dem Kalender). Antippen öffnet die Auswahl:
+
+| Typ | Stundenfeld | Was die App speichert |
+|---|---|---|
+| Unterricht (Standard) | wie gewohnt | Tagessumme in *AZ* |
+| Krank | gesperrt, ohne Stunden | Kalender: *krank* (Soll wird gutgeschrieben, wenn eingeschaltet); eine Tagessumme wird nach Rückfrage entfernt |
+| Fortbildung | wie gewohnt | Tagessumme in *F – Fortbildung*, Kalender: *Fortbildung* (Soll bleibt) |
+| Klassenfahrt | wie gewohnt | Tagessumme in *SV* mit Kennzeichen *Klassenfahrt* (Kappung nach Variante B) |
+| Schulveranstaltung | wie gewohnt | Tagessumme in *SV* (Wandertag, Schulfest, Ausflug) |
+
+Der Typ lässt sich auch vor den Stunden wählen und jederzeit wechseln; dabei ändert sich nur die Kategorie der
+Tagessumme, einzeln erfasste Einträge behalten ihre. Urlaub, Dienstbefreiung, Sonderurlaub und Elternzeit kommen aus
+dem *Kalender* und werden dort geändert (der Typ verlinkt dorthin). Ausnahme: Urlaub, den die App automatisch
+zugeordnet hat („Urlaub (autom.)“) – dort gehen Krank und Fortbildung direkt, der Urlaubstag rückt weiter. Nach
+Klassenfahrt oder Krank bietet die Zeile „auch für Di–Fr übernehmen“ an. Typwechsel funktionieren offline wie die Stunden.
 
 **Warum ist mein Saldo in den Sommerferien negativ?**
 Das Schuljahr beginnt am 01.08., mitten in den Sommerferien, und jedes Schuljahr startet bei 0. Mit „Sommerferien
@@ -316,7 +339,7 @@ gilt für Kalenderänderungen (z. B. Krankheitstag nachtragen), die einen abgesc
 
 **Funktioniert die App offline?**
 Ja, für den Timer und die Tagesstunden auf *Erfassen*: Start, Stopp, Wechsel und Pause bzw. die eingetragenen Stunden
-werden auf dem Handy zwischengespeichert und automatisch übertragen, sobald wieder Netz da ist – jeweils mit der
+und Tagestypen werden auf dem Handy zwischengespeichert und automatisch übertragen, sobald wieder Netz da ist – jeweils mit der
 Uhrzeit der Eingabe (auf *Erfassen* zeigt die Zeile bis dahin „nicht verbunden – wird übertragen“, die Wochensumme ist
 „vorläufig“). Zuletzt geladene Seiten sind offline lesbar;
 Einträge bearbeiten, Berichte und Exporte brauchen eine Verbindung. Ist die Cloudflare-Anmeldung abgelaufen, zeigt
@@ -421,14 +444,16 @@ Oberfläche Deutsch.
 
 1. Modell in `app/db/models.py` ändern.
 2. Migration erzeugen, mit fortlaufender Nummer als Revision:
-   `uv run alembic revision --autogenerate --rev-id 0005 -m "kurze beschreibung"`
+   `uv run alembic revision --autogenerate --rev-id 0007 -m "kurze beschreibung"`
    (oder `make revision m="…"`, dann die zufällige Revision-ID von Hand auf die nächste Nummer setzen).
 3. Datei in `alembic/versions/` prüfen und nachbessern: SQLite braucht `op.batch_alter_table` (Autogenerate
    erzeugt das dank `render_as_batch`), neue Pflichtspalten brauchen ein `server_default`, `downgrade()` füllen.
 4. `tests/test_migrations_match_models.py` auf die neue Head-Revision anpassen und `uv run pytest -q` laufen
    lassen – der Test prüft, dass die Migrationen exakt das Schema der Modelle ergeben.
 5. Bestehende Datenbanken werden beim nächsten App-Start automatisch migriert. JSON-Backups lassen sich nur in
-   eine Datenbank mit derselben Schema-Revision zurückspielen.
+   eine Datenbank mit derselben Schema-Revision zurückspielen – außer den in `export.DATA_ONLY_UPGRADES`
+   eingetragenen älteren Revisionen (z. B. 0004/0005 nach 0006: fehlende Spalten bekommen ihren Standardwert,
+   Tagessummen werden wie in Migration 0006 gekennzeichnet).
 
 ---
 

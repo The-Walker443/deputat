@@ -23,6 +23,7 @@ Errors: :class:`CalendarError` (``ValueError``, German message, invalid input),
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from collections.abc import Callable, Iterable
@@ -1283,6 +1284,65 @@ def get_override(db: Session, d: date) -> DayOverride | None:
     return db.get(DayOverride, d)
 
 
+def has_calendar_input(row: DayOverride | None) -> bool:
+    """True if the override carries calendar input (absence, day type, manual leave, note).
+
+    A row may exist only for the day type of the "Erfassen" screen (``erfassung_typ``, migration 0006) – that is
+    no calendar input: it never changes the soll and is kept when the calendar inputs are removed.
+    """
+    return bool(row is not None and (row.absence_type or row.day_type or row.urlaub_manuell or row.note))
+
+
+def _keeps_erfassung(row: DayOverride, *, stamp: bool = False) -> bool:
+    """The row holds a day type of "Erfassen" (kept when its calendar inputs go). ``stamp=True``: also a mere time
+    stamp of a type change (only for changes made *from* "Erfassen" – a change in the calendar itself removes such
+    a row with its last input; it is newer than anything queued on a device anyway)."""
+    return bool(row.erfassung_typ or (stamp and row.erfassung_typ_at))
+
+
+# Calendar absences that are also day types of the "Erfassen" screen (quick_entry.ABSENCE_TYPES).
+_ERFASSEN_ABSENCES = frozenset({"krank", "fortbildung"})
+
+
+def _serialised(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Run ``fn`` under the write lock of the "Erfassen" screen: calendar changes retype or remove Tagessummen,
+    and a day total written at the same moment must not work from the day type before the change."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from app.services import quick_entry  # local import: quick_entry reads calendar data
+
+        with quick_entry._WRITE_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def _after_absence_change(db: Session, before: dict[date, str | None], reason: str | None) -> None:
+    """Krank set in the calendar removes the day's Tagessumme like Krank on the chip
+    (:func:`app.services.quick_entry.apply_calendar_absences`); part of the calendar change's transaction."""
+    from app.services import quick_entry
+    from app.services.entries import EntryLocked
+
+    try:
+        quick_entry.apply_calendar_absences(db, before, reason=reason)
+    except EntryLocked as exc:
+        db.rollback()
+        raise CalendarLocked(exc.message) from None
+
+
+def _sync_tagessummen(db: Session, start: date, end: date, reason: str | None) -> None:
+    """After an override change: the category of the day totals ("Erfassen") follows the day type
+    (e.g. Fortbildung set in the calendar -> the Tagessumme becomes category F). Never fails the calendar change."""
+    from app.services import quick_entry  # local import: quick_entry reads calendar data
+
+    try:
+        quick_entry.sync_tagessumme_types(db, start, end, reason=reason)
+    except Exception:  # pragma: no cover - defensive, the calendar change itself is committed
+        log.exception("Tagessummen konnten nach der Kalenderänderung nicht angepasst werden")
+        db.rollback()
+
+
 def _normalise_override(
     absence_type: str | None, day_type: str | None, urlaub_manuell: bool, note: str | None
 ) -> tuple[str | None, str | None, bool, str | None]:
@@ -1347,10 +1407,30 @@ def _apply_override(
     day_type: str | None,
     urlaub_manuell: bool,
     note: str | None,
+    *,
+    typ_at: datetime | None = None,
+    before: dict[date, str | None] | None = None,
+    from_erfassen: bool = False,
 ) -> DayOverride | None:
+    """Write the override of ``d``. A change of the absence to or from Krank/Fortbildung (day types of the
+    "Erfassen" screen too) stamps ``erfassung_typ_at`` with ``typ_at``: a chip choice queued offline *before*
+    this change then arrives as "veraltet" instead of overwriting it. Not when the row goes away (an override
+    removed completely leaves no row behind just for the stamp). ``before`` collects the old absence."""
     row = db.get(DayOverride, d)
+    old = row.absence_type if row is not None else None
+    if before is not None:
+        before[d] = old
+    keeps = bool(absence_type or day_type or urlaub_manuell or note) or (
+        row is not None and _keeps_erfassung(row, stamp=from_erfassen))
+    if typ_at is not None and keeps and old != absence_type and {old, absence_type} & _ERFASSEN_ABSENCES:
+        if row is None:
+            row = DayOverride(date=d)
+            db.add(row)
+        row.erfassung_typ_at = typ_at
     if not (absence_type or day_type or urlaub_manuell or note):
-        if row is not None:
+        if row is not None and _keeps_erfassung(row, stamp=from_erfassen):  # only the "Erfassen" day type remains
+            row.absence_type, row.day_type, row.urlaub_manuell, row.note = None, None, False, None
+        elif row is not None:
             db.delete(row)
         return None
     if row is None:
@@ -1360,6 +1440,7 @@ def _apply_override(
     return row
 
 
+@_serialised
 def set_override(
     db: Session,
     d: date,
@@ -1369,10 +1450,13 @@ def set_override(
     urlaub_manuell: bool = False,
     note: str | None = None,
     reason: str | None = None,
+    typ_at: datetime | None = None,
 ) -> DayOverride | None:
     """Replace the override of day ``d`` (all fields empty → override removed); rematerialises.
 
     ``reason`` is required when the change alters a closed month (else :class:`CalendarLocked`).
+    Krank removes the day's Tagessumme of the "Erfassen" screen (like Krank on its chip, same reason text);
+    ``typ_at`` is the time of the change for that screen's offline check (default: now).
     """
     period = period_for_date(db, d)
     if period is None:
@@ -1386,13 +1470,18 @@ def set_override(
         )
         _check_manual_leave(db, period, d, candidate)
     before = closed_month_signature(db)
-    row = _apply_override(db, d, absence_type, day_type, urlaub_manuell, note)
+    absences: dict[date, str | None] = {}
+    row = _apply_override(db, d, absence_type, day_type, urlaub_manuell, note, typ_at=typ_at or now_utc(),
+                          before=absences, from_erfassen=typ_at is not None)
     db.flush()
     guard_closed_months(db, before, reason)
+    _after_absence_change(db, absences, reason)
     rematerialize(db, period)
+    _sync_tagessummen(db, d, d, reason)
     return row
 
 
+@_serialised
 def set_override_range(
     db: Session,
     start: date,
@@ -1416,6 +1505,8 @@ def set_override_range(
     absence_type, day_type, _, note = _normalise_override(absence_type, day_type, False, note)
     periods = db.scalars(select(Period).where(Period.start <= end, Period.end >= start)).all()
     before = closed_month_signature(db)
+    absences: dict[date, str | None] = {}
+    stamp = now_utc()
     rows: list[DayOverride] = []
     d = start
     while d <= end:
@@ -1423,22 +1514,30 @@ def set_override_range(
         if not in_period:
             raise CalendarError(f"Der {fmt_date_de(d)} liegt in keinem angelegten Schuljahr. {NO_PERIOD_HINT}")
         if not weekdays_only or d.isoweekday() <= 5:
-            row = _apply_override(db, d, absence_type, day_type, False, note)
+            row = _apply_override(db, d, absence_type, day_type, False, note, typ_at=stamp, before=absences)
             if row is not None:
                 rows.append(row)
         d += timedelta(days=1)
     db.flush()
     guard_closed_months(db, before, reason)
+    _after_absence_change(db, absences, reason)
     rematerialize_range(db, start, end)
+    _sync_tagessummen(db, start, end, reason)
     return rows
 
 
+@_serialised
 def delete_override(db: Session, d: date, *, reason: str | None = None) -> None:
     row = db.get(DayOverride, d)
     if row is None:
         raise NotFoundError("Für diesen Tag gibt es keine Eingabe.")
     before = closed_month_signature(db)
-    db.delete(row)
+    if row.absence_type in _ERFASSEN_ABSENCES and _keeps_erfassung(row):  # stale check of "Erfassen" (row kept)
+        row.erfassung_typ_at = now_utc()
+    if _keeps_erfassung(row):  # the "Erfassen" day type is no calendar input: it stays
+        row.absence_type, row.day_type, row.urlaub_manuell, row.note = None, None, False, None
+    else:
+        db.delete(row)
     db.flush()
     guard_closed_months(db, before, reason)
     period = period_for_date(db, d)
@@ -1446,6 +1545,7 @@ def delete_override(db: Session, d: date, *, reason: str | None = None) -> None:
         rematerialize(db, period)
     else:
         db.commit()
+    _sync_tagessummen(db, d, d, reason)
 
 
 # =========================================================================== leave
@@ -1553,6 +1653,7 @@ def leave_plan_info_from(pdays: PeriodDays) -> LeavePlanInfo:
     )
 
 
+@_serialised
 def adopt_leave_plan(
     db: Session, period: Period, mode: LeaveMode | str, *, reason: str | None = None
 ) -> LeavePlanInfo:
@@ -1571,7 +1672,7 @@ def adopt_leave_plan(
         )
     ):
         row.urlaub_manuell = False
-        if not (row.absence_type or row.day_type or row.note):
+        if not (row.absence_type or row.day_type or row.note or _keeps_erfassung(row, stamp=True)):  # keeps "Erfassen" data
             db.delete(row)
     db.flush()
     for d in sorted(plan.days):
@@ -1583,6 +1684,7 @@ def adopt_leave_plan(
     db.flush()
     guard_closed_months(db, before, reason)
     rematerialize(db, period)
+    _sync_tagessummen(db, period.start, period.end, reason)
     return leave_plan_info(db, period, LeaveMode.MANUELL)
 
 

@@ -288,6 +288,8 @@ class DayGroup:
 def entry_badges(entry: TimeEntry, *, flags: Iterable[str] = LIST_BADGE_FLAGS) -> list[tuple[str, str]]:
     present = set(entry.flags or [])
     badges = [(FLAG_LABELS[f], FLAG_BADGE.get(f, "")) for f in flags if f in present]
+    if entry.tagessumme:  # the day total of "Erfassen" (its category follows the day type: AZ/F/SV)
+        badges.insert(0, ("Tagessumme (Erfassen)", "badge-outline"))
     if entry.source == EntrySource.IMPORT.value:
         badges.append(("Import", "badge-outline"))
     if entry.locked:

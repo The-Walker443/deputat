@@ -9,6 +9,15 @@
                                queue may resend it. Answers with the week (``days``) plus ``day`` and
                                ``action`` (angelegt | geaendert | geloescht | unveraendert | bestaetigt |
                                veraltet).
+- ``PUT /days/{date}/typ``     ``{"typ": "unterricht" | "krank" | "fortbildung" | "klassenfahrt" |
+                               "schulveranstaltung"}``, optional ``at``, ``client_action_id``, ``reason``. Sets the
+                               day type (krank removes the Tagessumme, the others switch its category). Answers
+                               like the total PUT plus ``removed_seconds``; ``action`` geaendert | unveraendert |
+                               veraltet. 409 when the calendar holds Dienstbefreiung/Sonderurlaub/Elternzeit or
+                               manually assigned Urlaub (automatic leave can be switched).
+
+Both PUTs read the optional header ``X-Sent-At`` (device time of sending, set by the offline queue): with ``at`` it
+gives the real waiting time of the request, independent of a wrong device clock.
 
 Mounted by app.main under the ``/api`` prefix. PUT needs the CSRF header. Errors ``{"detail": ...}``:
 404 (unknown week), 409 (total below the entries recorded individually; ``detail_seconds`` /
@@ -21,7 +30,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -33,6 +42,9 @@ from app.services import quick_entry as svc
 router = APIRouter(tags=["erfassen"])
 
 DB = Annotated[Session, Depends(get_db)]
+# Device time at which the offline queue sent the request (offline-queue.js): with the body's "at" it gives the
+# real waiting time, independent of a wrong device clock (quick_entry.input_time).
+SentAt = Annotated[str | None, Header(alias="X-Sent-At", max_length=64)]
 
 
 class DayTotalIn(BaseModel):
@@ -40,6 +52,15 @@ class DayTotalIn(BaseModel):
 
     seconds: int | None = Field(default=None, ge=0, le=svc.MAX_ANY_DAY)
     value: str | None = Field(default=None, max_length=32)
+    at: datetime | None = None  # device time of the input (offline queue)
+    client_action_id: str | None = Field(default=None, max_length=64)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class DayTypIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    typ: str = Field(max_length=32)
     at: datetime | None = None  # device time of the input (offline queue)
     client_action_id: str | None = Field(default=None, max_length=64)
     reason: str | None = Field(default=None, max_length=500)
@@ -54,7 +75,7 @@ def get_week(ref: str, db: DB) -> dict[str, Any]:
 
 
 @router.put("/days/{day}/total", response_model=None)
-def put_day_total(day: date, body: DayTotalIn, db: DB) -> dict[str, Any] | JSONResponse:
+def put_day_total(day: date, body: DayTotalIn, db: DB, sent_at: SentAt = None) -> dict[str, Any] | JSONResponse:
     if body.seconds is not None and body.value is not None:
         raise HTTPException(422, "Bitte entweder „seconds“ oder „value“ angeben, nicht beides.")
     if body.seconds is None and body.value is None:
@@ -64,7 +85,7 @@ def put_day_total(day: date, body: DayTotalIn, db: DB) -> dict[str, Any] | JSONR
         max_seconds = svc.day_length(day)
         seconds = body.seconds if body.seconds is not None else svc.parse_total(body.value, max_seconds=max_seconds)
         return svc.set_day_total(db, day, seconds, client_action_id=body.client_action_id, reason=body.reason,
-                                 at=body.at)
+                                 at=body.at, sent_at=sent_at)
     except svc.DayTotalBelowDetail as exc:
         db.rollback()
         return JSONResponse(
@@ -78,3 +99,24 @@ def put_day_total(day: date, body: DayTotalIn, db: DB) -> dict[str, Any] | JSONR
     except entries_svc.DomainError as exc:
         db.rollback()
         raise HTTPException(exc.status_code, exc.message) from None
+
+
+@router.put("/days/{day}/typ", response_model=None)
+def put_day_typ(day: date, body: DayTypIn, db: DB, sent_at: SentAt = None) -> dict[str, Any]:
+    from app.services import calendar_service as cal
+
+    try:
+        return svc.set_day_typ(db, day, body.typ, client_action_id=body.client_action_id, reason=body.reason,
+                               at=body.at, sent_at=sent_at)
+    except entries_svc.EntryValidationError as exc:
+        db.rollback()
+        raise HTTPException(422, exc.message) from None
+    except entries_svc.DomainError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.message) from None
+    except cal.CalendarLocked as exc:
+        db.rollback()
+        raise HTTPException(423, str(exc)) from None
+    except cal.CalendarError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from None

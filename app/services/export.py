@@ -234,9 +234,15 @@ def export_csv(
 # =========================================================================== JSON backup
 
 
-# Migrations that changed data only (no schema): a backup taken at the older revision restores unchanged, the
-# seed after the restore adds what the data migration adds (0005: category AZ for the "Erfassen" day totals).
-DATA_ONLY_UPGRADES: dict[str, frozenset[str]] = {"0005": frozenset({"0004"})}
+# Older backups that restore into the current schema: 0005 changed data only (the seed after the restore adds the
+# category AZ); 0006 only added columns with defaults (time_entry.tagessumme, day_override.erfassung_typ/_at) –
+# after restoring a backup from before 0006 its day totals are marked like migration 0006 does
+# (:data:`TAGESSUMME_MARKER_FROM`, :func:`app.services.quick_entry.mark_legacy_tagessummen`).
+DATA_ONLY_UPGRADES: dict[str, frozenset[str]] = {
+    "0005": frozenset({"0004"}),
+    "0006": frozenset({"0004", "0005"}),
+}
+TAGESSUMME_MARKER_FROM = "0006"
 
 
 def schema_revision(db: Session) -> str | None:
@@ -521,6 +527,11 @@ def restore_json(
     from app.db.seed import seed
 
     seed(db)  # timer_state/settings singletons if the backup lacked them; never changes restored rows
+    revision = data.get("schema_revision")
+    if isinstance(revision, str) and revision < TAGESSUMME_MARKER_FROM:
+        from app.services.quick_entry import mark_legacy_tagessummen
+
+        mark_legacy_tagessummen(db)  # not a hash field: closed months stay as they were
     counts = {name: len(rows) for name, rows in rows_by_table.items()}
     log.info("JSON backup restored (%s rows, replaced=%s)", sum(counts.values()), populated)
     return RestoreResult(counts=counts, replaced=populated, safety_backup=backup_file)
