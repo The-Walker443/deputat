@@ -82,9 +82,16 @@ def init_db() -> None:
     """Ensure directories exist and migrate the database to the latest revision."""
     from alembic import command
 
+    from alembic.runtime.migration import MigrationContext
+
     get_config().ensure_dirs()
     cfg = alembic_config()
     with get_engine().begin() as connection:
+        before = MigrationContext.configure(connection).get_current_revision()
         cfg.attributes["connection"] = connection
         command.upgrade(cfg, "head")
-    log.info("Database migrated to head")
+        after = MigrationContext.configure(connection).get_current_revision()
+    if before == after:
+        log.info("Database at revision %s (no migration needed)", after)
+    else:
+        log.info("Database migrated %s -> %s", before or "empty", after)

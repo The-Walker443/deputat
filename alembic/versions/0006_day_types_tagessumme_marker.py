@@ -47,23 +47,34 @@ MARK_SQL = (
 )
 
 
+def _columns(table: str) -> set[str]:
+    return {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}
+
+
 def upgrade() -> None:
-    with op.batch_alter_table('time_entry', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('tagessumme', sa.Boolean(), nullable=False, server_default=sa.text('0')))
-    with op.batch_alter_table('day_override', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('erfassung_typ', sa.String(length=24), nullable=True))
-        batch_op.add_column(sa.Column('erfassung_typ_at', sa.DateTime(), nullable=True))
-    op.get_bind().exec_driver_sql(MARK_SQL)
+    # Plain ALTER TABLE ADD/DROP COLUMN, no batch table copy: a copy drops and renames time_entry, which fails
+    # with foreign_keys=ON as soon as time_entry_revision rows reference it. A first release of this migration
+    # did exactly that and could leave its copy behind – remove it.
+    bind = op.get_bind()
+    bind.exec_driver_sql("DROP TABLE IF EXISTS _alembic_tmp_time_entry")
+    bind.exec_driver_sql("DROP TABLE IF EXISTS _alembic_tmp_day_override")
+    if "tagessumme" not in _columns("time_entry"):
+        op.add_column('time_entry', sa.Column('tagessumme', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+    existing = _columns("day_override")
+    if "erfassung_typ" not in existing:
+        op.add_column('day_override', sa.Column('erfassung_typ', sa.String(length=24), nullable=True))
+    if "erfassung_typ_at" not in existing:
+        op.add_column('day_override', sa.Column('erfassung_typ_at', sa.DateTime(), nullable=True))
+    bind.exec_driver_sql(MARK_SQL)
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
     # Rows that only carried an "Erfassen" type would become empty overrides.
-    op.get_bind().exec_driver_sql(
+    bind.exec_driver_sql(
         "DELETE FROM day_override WHERE absence_type IS NULL AND day_type IS NULL AND urlaub_manuell = 0 "
         "AND note IS NULL"
     )
-    with op.batch_alter_table('day_override', schema=None) as batch_op:
-        batch_op.drop_column('erfassung_typ_at')
-        batch_op.drop_column('erfassung_typ')
-    with op.batch_alter_table('time_entry', schema=None) as batch_op:
-        batch_op.drop_column('tagessumme')
+    bind.exec_driver_sql("ALTER TABLE day_override DROP COLUMN erfassung_typ_at")
+    bind.exec_driver_sql("ALTER TABLE day_override DROP COLUMN erfassung_typ")
+    bind.exec_driver_sql("ALTER TABLE time_entry DROP COLUMN tagessumme")

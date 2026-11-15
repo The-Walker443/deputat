@@ -198,6 +198,54 @@ def test_0006_marks_existing_tagessummen(settings_env, tmp_path):
         engine.dispose()
 
 
+def test_0006_runs_with_foreign_keys_on_revisions_and_a_leftover_copy(settings_env, tmp_path):
+    """Like production: foreign_keys=ON (app engine pragmas), day totals with revisions referencing
+    time_entry, and the ``_alembic_tmp_time_entry`` table a failed first release of 0006 left behind."""
+    from alembic import command
+    from sqlalchemy import create_engine, event
+
+    from app.db.session import _set_sqlite_pragmas, alembic_config
+
+    url = f"sqlite:///{(tmp_path / 'prod.sqlite').as_posix()}"
+    engine = create_engine(url)
+    event.listen(engine, "connect", _set_sqlite_pragmas)
+    try:
+        cfg = alembic_config()
+        cfg.set_main_option("sqlalchemy.url", url)
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0005")
+            conn.exec_driver_sql(
+                "INSERT INTO category (code, name, color, sort, is_unterricht, counts_as_mehrarbeit_candidate, "
+                "active, is_pseudo, requires_note) VALUES ('AZ', 'AZ', '#2563EB', 150, 0, 0, 1, 0, 0)")
+            az = conn.exec_driver_sql("SELECT id FROM category WHERE code = 'AZ'").scalar()
+            conn.exec_driver_sql(
+                "INSERT INTO time_entry (id, start_at, end_at, duration_seconds, has_bounds, day, category_id, "
+                "note, flags, source, status, created_at, updated_at, locked) VALUES ('nachtrag', "
+                "'2026-09-15 00:00:00', '2026-09-15 09:00:00', 32400, 0, '2026-09-15', ?, 'Nachtrag', "
+                "'[\"nachtraeglich\", \"ohne_zeitgrenzen\"]', 'manuell', 'active', '2026-11-15 12:00:00', "
+                "'2026-11-15 12:00:00', 0)", (az,))
+            conn.exec_driver_sql(
+                "INSERT INTO time_entry_revision (id, entry_id, revision_no, changed_at, change_reason, snapshot_json) "
+                "VALUES ('rev-1', 'nachtrag', 1, '2026-11-15 12:00:00', 'Nachtrag', '{}')")
+            conn.exec_driver_sql("CREATE TABLE _alembic_tmp_time_entry (id VARCHAR PRIMARY KEY)")
+        with engine.begin() as conn:
+            assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "head")
+            assert conn.exec_driver_sql("SELECT tagessumme FROM time_entry WHERE id = 'nachtrag'").scalar() == 1
+            assert conn.exec_driver_sql("SELECT count(*) FROM time_entry_revision").scalar() == 1
+            assert "_alembic_tmp_time_entry" not in inspect(conn).get_table_names()
+            assert conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0005")
+            assert "tagessumme" not in {c["name"] for c in inspect(conn).get_columns("time_entry")}
+            assert conn.exec_driver_sql("SELECT count(*) FROM time_entry_revision").scalar() == 1
+    finally:
+        engine.dispose()
+
+
 def test_json_backup_of_0005_restores_into_0006_and_marks_day_totals(db):
     """A JSON backup taken before 0006 (no ``tagessumme`` / ``erfassung_typ`` columns) restores; its day totals
     are marked afterwards like migration 0006 does, and they keep working on "Erfassen"."""
